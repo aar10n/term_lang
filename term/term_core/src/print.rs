@@ -1,12 +1,10 @@
 use crate::core::*;
 use crate::Context;
 
-use term_print::ansi::chars::PIPE_SEP;
-use term_print::ansi::chars::PLUS_SEP;
 use term_print::ansi::{
     chars::{
-        ARROW, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LPARN, PERIOD, QMARK, QUOTE, RBRAC, RPARN,
-        TILDE,
+        ARROW, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LPARN, PERIOD, PIPE_SEP, PLUS_SEP, QMARK,
+        QUOTE, RBRAC, RPARN, TILDE,
     },
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, ITALIC, KEYWORD, MAGENTA, PUNCT, RED, RESET, TAG, TITLE,
     UNDERLINE,

@@ -1,4 +1,4 @@
-use crate::typenv::{TSet, TypeEnv};
+use crate::type_env::{TSet, TypeEnv};
 use crate::union_find::UnionFind;
 use term_core as core;
 

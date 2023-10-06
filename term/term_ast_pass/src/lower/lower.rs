@@ -512,7 +512,7 @@ impl Lower for ast::Pat {
 
                 // (((<con> p0) p1) p2)
                 let mut expr = Expr::Var(var_id);
-                for p in ps.lower(ctx)?.into_iter().rev() {
+                for p in ps.lower(ctx)?.into_iter() {
                     expr = Expr::Apply(expr.into(), p.into());
                 }
                 expr

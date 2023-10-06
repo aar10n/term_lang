@@ -36,6 +36,14 @@ impl<T: Clone + Ord + Eq> UnionFind<T> {
         t
     }
 
+    pub fn find_no_mut(&self, t: T) -> T {
+        match self.t_keys.get(&t) {
+            Some(_) => (),
+            None => return t,
+        };
+        self.find_no_create(t.clone()).unwrap_or(t)
+    }
+
     pub fn union(&mut self, t1: T, t2: T) -> T {
         let (k1, t1) = self.find_or_create(t1);
         let (k2, t2) = self.find_or_create(t2);
@@ -69,6 +77,21 @@ impl<T: Clone + Ord + Eq> UnionFind<T> {
             let t = self.find(self.key_ts[&p].clone());
             self.parent[k] = self.t_keys[&t];
             (self.t_keys[&t], t)
+        }
+    }
+
+    fn find_no_create(&self, t: T) -> Option<T> {
+        let k = match self.t_keys.get(&t) {
+            Some(k) => *k,
+            None => return None,
+        };
+
+        let p = self.parent[k];
+        if p == k {
+            Some(self.key_ts[&k].clone())
+        } else {
+            let t = self.find_no_mut(self.key_ts[&p].clone());
+            Some(t)
         }
     }
 
