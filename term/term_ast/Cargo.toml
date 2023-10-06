@@ -1,0 +1,15 @@
+[package]
+name = "term_ast"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+term_common = { path = "../term_common" }
+term_core = { path = "../term_core" }
+term_print = { path = "../term_print" }
+
+const_format = "0.2.31"
+either = "1.9.0"
+ustr = "0.10.0"

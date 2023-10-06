@@ -1,0 +1,25 @@
+[package]
+name = "term_lang"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[workspace]
+members = ["term/*"]
+
+[dependencies]
+term_ast = { path = "term/term_ast" }
+term_ast_pass = { path = "term/term_ast_pass" }
+term_common = { path = "term/term_common" }
+term_core = { path = "term/term_core" }
+term_diag = { path = "term/term_diag" }
+term_parse = { path = "term/term_parse" }
+term_print = { path = "term/term_print" }
+term_solve = { path = "term/term_solve" }
+
+atty = "0.2.4"
+clap = { version = "4.3.12", features = ["derive"] }
+rustyline = { version = "12.0.0", features = ["derive"] }
+peg = "0.8.1"
+ustr = "0.10.0"

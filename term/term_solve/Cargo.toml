@@ -1,0 +1,14 @@
+[package]
+name = "term_solve"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+term_common = { path = "../term_common" }
+term_core = { path = "../term_core" }
+term_diag = { path = "../term_diag" }
+term_print = { path = "../term_print" }
+
+ustr = "0.10.0"

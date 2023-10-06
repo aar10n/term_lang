@@ -1,0 +1,9 @@
+pub const RED: &str = "\x1B[31m";
+pub const GREEN: &str = "\x1B[32m";
+pub const YELLOW: &str = "\x1B[33m";
+pub const BLUE: &str = "\x1B[34m";
+pub const MAGENTA: &str = "\x1B[35m";
+pub const CYAN: &str = "\x1B[36m";
+pub const BOLD: &str = "\x1B[1m";
+pub const UNDERLINE: &str = "\x1B[4m";
+pub const RESET: &str = "\x1B[0m";
