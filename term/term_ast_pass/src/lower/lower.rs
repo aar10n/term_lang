@@ -97,6 +97,13 @@ impl Lower for ast::Ty {
                 let tuple_id = expect_data(ctx, &ty_name)?;
                 Ty::Data(tuple_id, ts.lower(ctx)?).into()
             }
+            TyKind::Record(fs) => {
+                let mut fields = BTreeMap::new();
+                for (n, t) in fs {
+                    fields.insert(n.raw, t.lower(ctx)?);
+                }
+                Ty::Record(fields).into()
+            }
             TyKind::Effect(t, f) => {
                 let (t, f1, cs) = t.lower(ctx)?.into_tuple();
                 let f = f.lower(ctx)? | f1;

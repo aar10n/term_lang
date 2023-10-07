@@ -83,6 +83,8 @@ pub enum TyKind {
     List(P<Ty>),
     /// A tuple type.
     Tuple(Vec<P<Ty>>),
+    /// A record type.
+    Record(Vec<(Ident, P<Ty>)>),
     /// An effectful type (t ~ e).
     Effect(P<Ty>, P<Ef>),
     /// Forall quantifier.

@@ -2,8 +2,8 @@ use crate::{ast::*, Context};
 use term_core::Id;
 use term_print::ansi::{
     chars::{
-        COLON, COMMA_SEP, LBRAC, LPARN, PERIOD, PIPE, PIPE_SEP, PLUS_SEP, QUOTE, RBRAC, RPARN,
-        TILDE,
+        COLON, COMMA_SEP, LBRAC, LBRACE, LPARN, PERIOD, PIPE, PIPE_SEP, PLUS_SEP, QUOTE, RBRAC,
+        RBRACE, RPARN, TILDE,
     },
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, MAGENTA, PUNCT, RED, RESET, TAG, UNDERLINE,
 };
@@ -139,6 +139,17 @@ impl<'a> PrettyPrint<Context<'a>> for TyKind {
                 write!(out, "{LPARN}")?;
                 a.pretty_print(out, ctx, 0)?;
                 write!(out, "{RPARN}")
+            }
+            TyKind::Record(fs) => {
+                write!(out, "{LBRACE}")?;
+                for (i, (n, ty)) in fs.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, " ")?;
+                    }
+                    write!(out, "{} {COLON} ", n.pretty_string(ctx))?;
+                    ty.pretty_print(out, ctx, 0)?;
+                }
+                write!(out, "{RBRACE}")
             }
             TyKind::Effect(ty, ef) => {
                 if ef.is_pure() {

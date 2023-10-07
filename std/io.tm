@@ -12,5 +12,6 @@ effect IO
     | write_char : Char -> () ~ Except'IOError
     ;
 
-data IOError = IOError String;
-
+data IOError = IOError {
+    msg : String
+};

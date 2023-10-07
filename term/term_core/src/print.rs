@@ -3,8 +3,8 @@ use crate::Context;
 
 use term_print::ansi::{
     chars::{
-        ARROW, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LPARN, PERIOD, PIPE_SEP, PLUS_SEP, QMARK,
-        QUOTE, RBRAC, RPARN, TILDE,
+        ARROW, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LBRACE, LPARN, PERIOD, PIPE_SEP, PLUS_SEP,
+        QMARK, QUOTE, RBRAC, RBRACE, RPARN, TILDE,
     },
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, ITALIC, KEYWORD, MAGENTA, PUNCT, RED, RESET, TAG, TITLE,
     UNDERLINE,
@@ -129,7 +129,7 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
             }
             Ty::Sum(ts) => write_list(out, ctx, PLUS_SEP, ts),
             Ty::Record(fields) => {
-                write!(out, "{LBRAC}")?;
+                write!(out, "{LBRACE}")?;
                 let mut fields = fields.iter().peekable();
                 while let Some((name, ty)) = fields.next() {
                     write!(out, "{BLUE}{}{RESET} {PUNCT}:{RESET} ", name.as_ref())?;
@@ -138,7 +138,7 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                         write!(out, "{PUNCT},{RESET} ")?;
                     }
                 }
-                write!(out, "{RBRAC}")
+                write!(out, "{RBRACE}")
             }
             Ty::Effectful(t, f) => {
                 t.pretty_print(out, ctx, Default::default());

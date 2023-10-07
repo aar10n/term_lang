@@ -23,6 +23,8 @@ pub mod chars {
     use super::*;
     pub const LBRAC: &str = concatcp!(DELIM, "[", RESET);
     pub const RBRAC: &str = concatcp!(DELIM, "]", RESET);
+    pub const LBRACE: &str = concatcp!(DELIM, "{", RESET);
+    pub const RBRACE: &str = concatcp!(DELIM, "}", RESET);
     pub const LPARN: &str = concatcp!(DELIM, "(", RESET);
     pub const RPARN: &str = concatcp!(DELIM, ")", RESET);
     pub const PIPE: &str = concatcp!(DELIM, "|", RESET);

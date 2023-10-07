@@ -12,7 +12,7 @@ peg::parser! {
 
         rule _ = quiet!{whitespace()*}
         rule __ = quiet!{whitespace()+}
-        rule ___ = quiet!{eol() _ / whitespace()+}
+        rule ___ = quiet!{eol()* _ / whitespace()*}
 
         rule int_base<T, U>(base: u32, prefix: rule<T>, digits: rule<U>) -> LitKind =
             p:prefix() d:$(digits() ("_"? d:digits(){d})*) {
@@ -194,6 +194,8 @@ peg::parser! {
             "(" ts:((_ t:ty() _ {t}) ++ ",") ")" { TyKind::Tuple(ts) }
             // list type `[a]`
             "[" _ t:ty() _ "]" { TyKind::List(t) }
+            // record type `{a: A, b: B}`
+            "{" fs:((___ n:ident() _ ":" _ t:ty() ___ { (n, t) }) ** ",") "}" { TyKind::Record(fs) }
             // function type `a -> b`
             at:ty() _ "->" _ bt:ty() { TyKind::Func(at, bt) }
 
