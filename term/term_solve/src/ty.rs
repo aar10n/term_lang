@@ -226,6 +226,38 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
     }
 }
 
+pub fn simplify(t: Ty) -> TyE {
+    use Ty::*;
+    match t {
+        Data(id, ts) => {
+            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
+            TyE::pure(Data(id, ts))
+        }
+        Func(box t1, box t2) => {
+            let t1 = crate::simplify(t1);
+            let (t2, f, cs) = crate::simplify(t2).into_tuple();
+            TyE::new(Ty::Func(t1.into(), TyE::pure(t2).into()).into(), f, cs)
+        }
+        Sum(ts) => {
+            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
+            TyE::pure(Sum(ts))
+        }
+        Record(fields) => {
+            let fields = fields
+                .into_iter()
+                .map(|(k, v)| (k, crate::simplify(v)))
+                .collect();
+            TyE::pure(Record(fields))
+        }
+        Effectful(box t, f) => {
+            let (t, f2, cs) = simplify(t).into_tuple();
+            let f = ef::simplify(f | f2);
+            TyE::new(t, f, cs)
+        }
+        _ => TyE::pure(t),
+    }
+}
+
 pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
     if x == t {
         return true;

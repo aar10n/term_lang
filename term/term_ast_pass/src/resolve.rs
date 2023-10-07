@@ -111,6 +111,10 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
                             .into_err()
                     }
                 },
+                Id::Handler(id) => {
+                    // map data_con to its var_id first
+                    Ok(Some(*self.ctx.handler_var_ids.get(&id).unwrap()))
+                }
                 Id::Var(id) => Ok(id.into()),
                 id => Diagnostic::error("expected variable", self.ctx.id_as_span(id).unwrap())
                     .with_inline_note("name is defined but is not a variable")

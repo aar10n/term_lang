@@ -46,7 +46,7 @@ declare_union_id!(Id {
 /// An generalized expression.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Expr {
-    /// Type
+    /// Type.
     Type(P<TyE>),
 
     /// Wildcard.
@@ -57,8 +57,6 @@ pub enum Expr {
     Sym(Ustr),
     /// Variable.
     Var(VarId),
-    /// Effect.
-    Effect(EffectId, Vec<TyE>),
 
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
@@ -68,6 +66,8 @@ pub enum Expr {
     Let(Bind, Option<P<Expr>>),
     /// Case expression.
     Case(P<Expr>, Vec<(Expr, Expr)>),
+    /// Handle expression.
+    Handle(P<Expr>, Vec<(Ef, Expr)>),
     /// Do expression.
     Do(Vec<Expr>),
 

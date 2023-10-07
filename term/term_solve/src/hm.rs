@@ -9,17 +9,6 @@ use type_env::TSet;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub struct PatSolution {
-    pub vars: Vec<(Expr, TyE)>,
-    pub handler: Option<Ef>,
-}
-
-impl PatSolution {
-    pub fn new(vars: Vec<(Expr, TyE)>, handler: Option<Ef>) -> Self {
-        Self { vars, handler }
-    }
-}
-
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
     use self::Bind::*;
     use self::Expr::*;
@@ -68,8 +57,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             let t1 = algorithmj(ctx, e1.clone())?;
             let t2 = algorithmj(ctx, e2.clone())?;
 
-            // let f = ctx.new_ef_var();
-            let f = Ef::Pure;
+            let f = ctx.new_ef_var();
             let result = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
             let rt = crate::unify(
                 ctx,
@@ -93,10 +81,8 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             result
         }
         Lambda(x, box e) => {
-            // let f = ctx.new_ef_var();
-            let v = ctx.new_ty_var();
-            let f = Ef::Pure;
-            let t = TyE::new(v.clone(), f.clone(), vec![]);
+            let f = ctx.new_ef_var();
+            let t = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
 
             ctx.push_typing(Expr::Var(x), t.clone());
             let rt = algorithmj(ctx, e.clone())?;
@@ -113,8 +99,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             result
         }
         Let(Rec(x, box e), e1) => {
-            // let f = ctx.new_ef_var();
-            let f = Ef::Pure;
+            let f = ctx.new_ef_var();
             let t = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
 
             let ft = TyE::new(
@@ -150,7 +135,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
         }
         Let(NonRec(box p, box e), e1) => {
             let t = algorithmj(ctx, e.clone())?;
-            let PatSolution { vars, handler } = solve_pat(ctx, p.clone(), t.clone())?;
+            let vars = unify_pat(ctx, p.clone(), t.clone())?;
 
             let mut result = t.clone();
             if let Some(box e1) = e1 {
@@ -173,11 +158,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             let mut res_t = Ty::Infer;
             let mut res_f = Ef::Infer;
             for (p, e) in alts {
-                let PatSolution { vars, handler } = solve_pat(ctx, p.clone(), case_t.clone())?;
-                if let Some(ef) = handler {
-                    todo!("associate handler with effect in context")
-                }
-
+                let vars = unify_pat(ctx, p.clone(), case_t.clone())?;
                 ctx.push_typings(vars);
                 let (e_t, e_f, _) = algorithmj(ctx, e.clone())?.into_tuple();
                 ctx.pop_typings();
@@ -187,7 +168,19 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             }
             TyE::new(res_t, res_f, vec![])
         }
-        Effect(_, _) => todo!(),
+        Handle(box e, alts) => {
+            let expr_t = algorithmj(ctx, e.clone())?;
+            let mut res_t = Ty::Infer;
+            let mut res_f = Ef::Infer;
+            for (f, e) in alts {
+                let (e_t, e_f, _) = algorithmj(ctx, e.clone())?.into_tuple();
+                ctx.pop_typings();
+
+                res_t = ty::unify(ctx, res_t, e_t)?;
+                res_f = res_f | e_f;
+            }
+            TyE::new(res_t, res_f, vec![])
+        }
         Do(_) => todo!(),
 
         Span(s, box e) => {
@@ -199,44 +192,29 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
     })
 }
 
-pub fn solve_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<PatSolution> {
+pub fn unify_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<Vec<(Expr, TyE)>> {
     use Expr::*;
     use Ty::*;
 
     let (t, f, cs) = t.into_tuple();
     let cs = crate::solve_constraints(ctx, cs)?;
     Ok(match (p, t) {
-        (Wildcard, _) => PatSolution::new(vec![], None),
+        (Wildcard, _) => vec![],
         (Lit(l), t) => {
-            let t1 = TyE::pure(l.as_ty());
-            let t2 = TyE::new(t, Ef::Pure, vec![]);
-            crate::unify(ctx, t1, t2)?;
-            PatSolution::new(vec![], None)
+            ty::unify(ctx, t, l.as_ty())?;
+            vec![]
         }
-        (Var(x), t) => PatSolution::new(vec![(Var(x), TyE::pure(t))], None),
-        (Effect(eff_id, ts1), _) => {
-            let mut fs = f.into_hashset();
-            let f = Ef::Effect(eff_id, ts1.clone());
-            if !fs.contains(&f) {
-                return format!(
-                    "effect `{}` found when expecting effect of `{}`",
-                    ctx.id_as_str(eff_id),
-                    ts1.iter()
-                        .map(|t| t.pretty_string(ctx))
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                )
-                .into_err();
-            }
-            PatSolution::new(vec![], Some(f))
-        }
+        (Var(x), t) => vec![(Var(x), TyE::pure(t))],
+        (Span(_, box e), t) => unify_pat(ctx, e, TyE::pure(t))?,
         (p, t) => {
             // ctx.ty_set.print_stdout(ctx);
             // println!("-----");
             return format!(
-                "pattern `{}` does not match type `{}`",
+                "pattern `{}` ({:?}) does not match type `{}` ({:?})",
                 p.pretty_string(ctx),
+                p,
                 t.pretty_string(ctx),
+                t,
             )
             .into_err();
         }

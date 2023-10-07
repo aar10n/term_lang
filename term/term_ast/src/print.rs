@@ -607,13 +607,17 @@ impl<'a> PrettyPrint<Context<'a>> for ExprKind {
                 writeln!(out, "{tab}{TAG}Unary{RESET} {:?}", op)?;
                 x.pretty_print(out, ctx, level + 1);
             }
-            ExprKind::Block(block) => {
-                writeln!(out, "{tab}{TAG}Block{RESET}")?;
-                block.pretty_print(out, ctx, level + 1);
-            }
             ExprKind::Case(case) => {
                 writeln!(out, "{tab}{TAG}Case{RESET}")?;
                 case.pretty_print(out, ctx, level + 1);
+            }
+            ExprKind::Handle(handle) => {
+                writeln!(out, "{tab}{TAG}Handle{RESET}")?;
+                handle.pretty_print(out, ctx, level + 1);
+            }
+            ExprKind::Do(block) => {
+                writeln!(out, "{tab}{TAG}Block{RESET}")?;
+                block.pretty_print(out, ctx, level + 1);
             }
             ExprKind::If(if_) => {
                 writeln!(out, "{tab}{TAG}If{RESET}")?;
@@ -651,6 +655,13 @@ impl<'a> PrettyPrint<Context<'a>> for ExprKind {
                 writeln!(out, "{tab}{TAG}Tuple{RESET}")?;
                 write_bulleted(out, ctx, exprs, level + 1)?;
             }
+            ExprKind::Record(fields) => {
+                writeln!(out, "{tab}{TAG}Record{RESET}")?;
+                for (name, expr) in fields {
+                    writeln!(out, "{ttab}{}:", name.pretty_string(ctx))?;
+                    expr.pretty_print(out, ctx, level + 2)?;
+                }
+            }
             ExprKind::Lit(lit) => {
                 writeln!(out, "{tab}{TAG}Lit{RESET} {}", lit.pretty_string(ctx))?;
             }
@@ -682,15 +693,6 @@ impl<'a> PrettyPrint<Context<'a>> for PatKind {
                 }
                 Ok(())
             }
-            PatKind::Effect(name, tys) => {
-                write!(out, "{TILDE}{}", name.pretty_string(ctx))?;
-                if !tys.is_empty() {
-                    write!(out, " {LPARN}")?;
-                    write_list(out, ctx, COMMA_SEP, tys)?;
-                    write!(out, "{RPARN}")?;
-                }
-                Ok(())
-            }
             PatKind::Tuple(pats) => {
                 write!(out, "{LPARN}")?;
                 pats.pretty_print(out, ctx, 0)?;
@@ -712,17 +714,6 @@ impl<'a> PrettyPrint<Context<'a>> for PatKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Block {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context<'a>,
-        level: usize,
-    ) -> io::Result<()> {
-        write_bulleted(out, ctx, &self.exprs, level)
-    }
-}
-
 impl<'a> PrettyPrint<Context<'a>> for Case {
     fn pretty_print<Output: io::Write>(
         &self,
@@ -739,7 +730,7 @@ impl<'a> PrettyPrint<Context<'a>> for Case {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Alt {
+impl<'a> PrettyPrint<Context<'a>> for CaseAlt {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
@@ -754,6 +745,47 @@ impl<'a> PrettyPrint<Context<'a>> for Alt {
         )?;
         writeln!(out, "{tab}{ATTR}expr:{RESET}")?;
         self.expr.pretty_print(out, ctx, level + 1)
+    }
+}
+
+impl<'a> PrettyPrint<Context<'a>> for Handle {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context<'a>,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        writeln!(out, "{tab}{ATTR}expr:{RESET}")?;
+        self.expr.pretty_print(out, ctx, level + 1)?;
+        writeln!(out, "{tab}{ATTR}alts:{RESET}")?;
+        write_bulleted(out, ctx, &self.alts, level + 1)?;
+        Ok(())
+    }
+}
+
+impl<'a> PrettyPrint<Context<'a>> for HandleAlt {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context<'a>,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        writeln!(out, "{tab}{ATTR}ef:{RESET} {}", self.ef.pretty_string(ctx))?;
+        writeln!(out, "{tab}{ATTR}expr:{RESET}")?;
+        self.expr.pretty_print(out, ctx, level + 1)
+    }
+}
+
+impl<'a> PrettyPrint<Context<'a>> for Do {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context<'a>,
+        level: usize,
+    ) -> io::Result<()> {
+        write_bulleted(out, ctx, &self.exprs, level)
     }
 }
 

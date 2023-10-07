@@ -36,10 +36,6 @@ impl PrettyPrint<Context> for Expr {
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
             Expr::Sym(n) => write!(out, "{BLUE}{}{RESET}", n),
             Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
-            Expr::Effect(id, ts) => {
-                id.pretty_print(out, ctx, level)?;
-                write_args_list(out, ctx, ts, QUOTE, " ")
-            }
 
             Expr::Apply(a, b) => {
                 write!(out, "{LPARN}")?;
@@ -65,6 +61,12 @@ impl PrettyPrint<Context> for Expr {
                 write!(out, "{KEYWORD}case{RESET} ")?;
                 write_indented(out, ctx, e, 0, false)?;
                 writeln!(out, " {KEYWORD}of{RESET} ")?;
+                write_bulleted_sep(out, ctx, bs, level + 1, "|")
+            }
+            Expr::Handle(e, bs) => {
+                write!(out, "{KEYWORD}handle{RESET} ")?;
+                write_indented(out, ctx, e, 0, false)?;
+                writeln!(out, " {KEYWORD}with{RESET} ")?;
                 write_bulleted_sep(out, ctx, bs, level + 1, "|")
             }
             Expr::Do(es) => {
@@ -188,6 +190,21 @@ impl PrettyPrint<Context> for (Expr, Expr) {
     }
 }
 
+impl PrettyPrint<Context> for (Ef, Expr) {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        write!(out, "{tab}")?;
+        self.0.pretty_print(out, ctx, 0)?;
+        write!(out, " {PUNCT}->{RESET} ")?;
+        self.1.pretty_print(out, ctx, 0)
+    }
+}
+
 impl PrettyPrint<Context> for Bind {
     fn pretty_print<Output: io::Write>(
         &self,
@@ -270,7 +287,7 @@ impl PrettyPrint<Context> for Def {
         writeln!(
             out,
             "{ttab}{ATTR}type:{RESET} {}",
-            self.ty.pretty_string(ctx)
+            self.ty.pretty_string(ctx),
         )?;
 
         if self.builtin {

@@ -494,10 +494,12 @@ pub enum ExprKind {
     Binary(BinOp, P<Expr>, P<Expr>),
     /// A unary operation.
     Unary(UnOp, P<Expr>),
-    /// Block expression.
-    Block(Block),
     /// Case expression.
     Case(Case),
+    /// Handle expresion.
+    Handle(Handle),
+    /// Do expression.
+    Do(Do),
     /// If expression.
     If(If),
     /// A function binding.
@@ -510,6 +512,8 @@ pub enum ExprKind {
     List(Vec<P<Expr>>),
     /// A tuple expression.
     Tuple(Vec<P<Expr>>),
+    /// A record expression.
+    Record(Vec<(Ident, P<Expr>)>),
     /// A literal value.
     Lit(Lit),
     /// An identifier.
@@ -560,8 +564,6 @@ pub enum PatKind {
     Unit,
     /// A data constructor pattern.
     DataCon(Ident, Vec<P<Pat>>),
-    /// An effect pattern.
-    Effect(Ident, Vec<P<Ty>>),
     /// A tuple pattern.
     Tuple(Vec<P<Pat>>),
     /// A list pattern.
@@ -576,14 +578,14 @@ pub enum PatKind {
 
 /// A block expression.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block {
+pub struct Do {
     /// Block expressions.
     pub exprs: Vec<P<Expr>>,
     /// Block span.
     span: Span,
 }
 
-impl Block {
+impl Do {
     pub fn new(exprs: Vec<P<Expr>>) -> Self {
         Self {
             exprs,
@@ -598,13 +600,13 @@ pub struct Case {
     /// Case expression.
     pub expr: P<Expr>,
     /// Case alternatives.
-    pub alts: Vec<Alt>,
+    pub alts: Vec<CaseAlt>,
     /// Case span.
     span: Span,
 }
 
 impl Case {
-    pub fn new(expr: P<Expr>, alts: Vec<Alt>) -> Self {
+    pub fn new(expr: P<Expr>, alts: Vec<CaseAlt>) -> Self {
         Self {
             expr,
             alts,
@@ -615,7 +617,7 @@ impl Case {
 
 /// A case alternative.
 #[derive(Clone, Debug, PartialEq)]
-pub struct Alt {
+pub struct CaseAlt {
     /// Alternative pattern.
     pub pat: P<Pat>,
     /// Alternative expression.
@@ -624,10 +626,52 @@ pub struct Alt {
     span: Span,
 }
 
-impl Alt {
+impl CaseAlt {
     pub fn new(pat: P<Pat>, expr: P<Expr>) -> Self {
         Self {
             pat,
+            expr,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A handle expression.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Handle {
+    /// Handle expression.
+    pub expr: P<Expr>,
+    /// Handle alternatives.
+    pub alts: Vec<HandleAlt>,
+    /// Case span.
+    span: Span,
+}
+
+impl Handle {
+    pub fn new(expr: P<Expr>, alts: Vec<HandleAlt>) -> Self {
+        Self {
+            expr,
+            alts,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A handle alternative.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HandleAlt {
+    /// Alternative effect.
+    pub ef: P<Ef>,
+    /// Alternative expression.
+    pub expr: P<Expr>,
+    /// Alternative span.
+    span: Span,
+}
+
+impl HandleAlt {
+    pub fn new(ef: P<Ef>, expr: P<Expr>) -> Self {
+        Self {
+            ef,
             expr,
             span: Span::default(),
         }
@@ -760,8 +804,10 @@ impl_spanned!(MethodImpl);
 impl_spanned!(VarDecl);
 impl_spanned!(TyParams);
 // impl_spanned!(Expr);
-impl_spanned!(Block);
+impl_spanned!(Do);
 impl_spanned!(Case);
-impl_spanned!(Alt);
+impl_spanned!(CaseAlt);
+impl_spanned!(Handle);
+impl_spanned!(HandleAlt);
 impl_spanned!(If);
 impl_spanned!(Ident);

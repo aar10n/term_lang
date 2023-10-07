@@ -133,6 +133,26 @@ pub fn generalize(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<MonoVarId, Poly
     }
 }
 
+pub fn simplify(f: Ef) -> Ef {
+    use Ef::*;
+    match f {
+        Effect(id, ts) => {
+            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
+            Effect(id, ts)
+        }
+        Union(mut fs) => {
+            fs.sort();
+            fs.dedup();
+            if fs.len() == 1 {
+                simplify(fs.pop().unwrap())
+            } else {
+                Ef::Union(fs.into_iter().map(|f| simplify(f).into()).collect())
+            }
+        }
+        f => f,
+    }
+}
+
 pub fn contains(id: EffectId, ts: &Vec<TyE>, f: &Ef) -> bool {
     use Ef::*;
     match f {

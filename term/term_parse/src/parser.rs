@@ -129,7 +129,7 @@ peg::parser! {
             span(<n:$(ident_char_start() ident_char_rest()*) {?
                 match n {
                     "case" | "class" | "data" | "default" | "effect" | "else" | "false" | "for" |
-                    "handler" | "if" | "instance" | "then" | "true" => Err("reserved keyword"),
+                    "handler" | "handle" | "if" | "instance" | "of" | "then" | "true" | "with" => Err("reserved keyword"),
                     _ => Ok(Ident::from(n)),
                 }
             }>)} /
@@ -146,11 +146,15 @@ peg::parser! {
 
         rule ty_arg_list() -> Vec<P<Ty>> = ts:(ty() ++ __) {ts}
 
+        rule paren_ty_arg_list() -> Vec<P<Ty>> =
+            "(" _ ts:ty_arg_list() _ ")" { ts } /
+            t:ty() { vec![t] }
+
         rule ef_arg_list() -> Vec<P<Ty>> =
-            ts:("'" _ ts:ty_arg_list() {ts})? {ts.unwrap_or(vec![])}
+            ts:("'" _ ts:paren_ty_arg_list() {ts})? {ts.unwrap_or(vec![])}
 
         rule constraint() -> Constraint =
-            node(<n:ty_ident() _ "'" _ ps:ty_arg_list() { ConstraintKind::Class(n, ps) }>)
+            node(<n:ty_ident() _ "'" _ ps:paren_ty_arg_list() { ConstraintKind::Class(n, ps) }>)
 
         rule constraints() -> Vec<Constraint> =
             "|" cs:((_ c:constraint() _ {c}) ** (_ "," _)) "|" {cs}
@@ -227,14 +231,23 @@ peg::parser! {
             n:ident() { PatKind::Ident(n) }
         }
 
-        rule alt() -> Alt =
-            p:pat() _ "->" _ e:expr() { Alt::new(p, e) }
+        rule case_alt() -> CaseAlt =
+            span(<p:pat() _ "->" _ e:expr() { CaseAlt::new(p, e) }>)
 
         rule case() -> Case =
-            span(<kw(<"case">) _ e:expr() eol()? alts:multiline(<alt()>) { Case::new(e, alts) }>)
+            span(<kw(<"case">) _ e:expr() eol()? alts:multiline(<case_alt()>) { Case::new(e, alts) }>)
 
-        rule block() -> Block =
-            span(<kw(<"do">) eol()? es:multiline(<expr()>) { Block::new(es) }>)
+        rule handle_alt() -> HandleAlt =
+            span(<f:ef() _ "~>" _ e:expr() { HandleAlt::new(f, e) }>)
+
+        rule handle() -> Handle = span(<
+            kw(<"handle">) _ e:expr() eol()? alts:multiline(<handle_alt()>) {
+                Handle::new(e, alts)
+            }
+        >)
+
+        rule block() -> Do =
+            span(<kw(<"do">) eol()? es:multiline(<expr()>) { Do::new(es) }>)
 
         rule if_else() -> If =
             span(<
@@ -253,10 +266,12 @@ peg::parser! {
             s:position!() n:@ e:position!() { Box::new(Expr::new(n, Span::new(source_id, s, e))) }
             --
 
-            // block expression
-            b:block() { ExprKind::Block(b) }
             // case expression
             c:case() { ExprKind::Case(c.into()) }
+            // handle expression
+            h:handle() { ExprKind::Handle(h.into()) }
+            // do expression
+            d:block() { ExprKind::Do(d) }
             // if expression
             i:if_else() { ExprKind::If(i.into()) }
             // function expression
@@ -265,10 +280,6 @@ peg::parser! {
             p:pat() _ "=" _ e:expr() { ExprKind::Var(p, e) }
             // lambda expression
             ps:params(<param()>) _ "=>" _ e:expr() { ExprKind::Lambda(ps, e) }
-            // list expression
-            "[" es:((_ e:expr() _ {e}) ** ",") "]" { ExprKind::List(es) }
-            // tuple expression
-            "(" es:((_ e:expr() _ {e}) ++ ",") ")" { ExprKind::Tuple(es) }
             --
 
             // lowest priority right assoc. application
@@ -290,10 +301,19 @@ peg::parser! {
             x:(@) &("(") y:@ { ExprKind::Apply(x, y) }
             --
 
+            // list expression
+            "[" es:((_ e:expr() _ {e}) ** ",") "]" { ExprKind::List(es) }
+
+            // record expression
+            "{" fs:((_ n:ident() _ "=" _ e:expr() { (n, e) }) ** (eol()? "," eol()?)) "}" { ExprKind::Record(fs) }
+
             l:node(<"(" _ ")" {LitKind::Unit}>) { ExprKind::Lit(l) }
             l:lit() { ExprKind::Lit(l) }
             n:ident() { ExprKind::Ident(n) }
             "(" _ e:expr() _ ")" { e.kind }
+
+            // tuple expression
+            "(" es:((_ e:expr() _ {e}) ++ ",") ")" { ExprKind::Tuple(es) }
         }
 
         rule ty_params() -> TyParams = ps:span(<

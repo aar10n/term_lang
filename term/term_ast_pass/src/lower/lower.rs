@@ -62,7 +62,7 @@ impl Lower for ast::Ty {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::TyKind;
         use core::{Id, Ty, TyE};
-        Ok(match &self.kind {
+        let t = match &self.kind {
             TyKind::Infer => Ty::Infer.into(),
             TyKind::Never => Ty::Never.into(),
             TyKind::Unit => Ty::Unit.into(),
@@ -109,7 +109,8 @@ impl Lower for ast::Ty {
                 TyE::new(t, f, cs)
             }
             TyKind::Ref(id) => todo!(),
-        })
+        };
+        Ok(solve::simplify(t))
     }
 }
 
@@ -407,8 +408,9 @@ impl Lower for ast::Expr {
                 let a = a.lower(ctx)?;
                 Expr::Apply(op.into(), a.into())
             }
-            ExprKind::Block(b) => b.lower(ctx)?,
             ExprKind::Case(c) => c.lower(ctx)?,
+            ExprKind::Handle(h) => h.lower(ctx)?,
+            ExprKind::Do(b) => b.lower(ctx)?,
             ExprKind::If(i) => i.lower(ctx)?,
             ExprKind::Func(n, ps, expr) => {
                 let id = unwrap_resolved_ident(n)?.var_id();
@@ -445,6 +447,7 @@ impl Lower for ast::Expr {
                 }
                 expr
             }
+            ExprKind::Record(fs) => todo!(),
             ExprKind::Lit(l) => l.lower(ctx)?,
             ExprKind::Ident(n) => match n.id {
                 Some(Id::Var(id)) => Ok(Expr::Var(id)),
@@ -457,7 +460,18 @@ impl Lower for ast::Expr {
     }
 }
 
-impl Lower for ast::Alt {
+impl Lower for ast::Case {
+    type Target = core::Expr;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Expr;
+        let e = self.expr.lower(ctx)?;
+        let bs = self.alts.lower(ctx)?;
+        Ok(Expr::Case(e.into(), bs))
+    }
+}
+
+impl Lower for ast::CaseAlt {
     type Target = (core::Expr, core::Expr);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
@@ -467,23 +481,33 @@ impl Lower for ast::Alt {
     }
 }
 
-impl Lower for ast::Block {
-    type Target = core::Expr;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::Expr;
-        Ok(Expr::Do(self.exprs.lower(ctx)?))
-    }
-}
-
-impl Lower for ast::Case {
+impl Lower for ast::Handle {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Expr;
         let e = self.expr.lower(ctx)?;
         let bs = self.alts.lower(ctx)?;
-        Ok(Expr::Case(e.into(), bs))
+        Ok(Expr::Handle(e.into(), bs))
+    }
+}
+
+impl Lower for ast::HandleAlt {
+    type Target = (core::Ef, core::Expr);
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        let f = self.ef.lower(ctx)?;
+        let e = self.expr.lower(ctx)?;
+        Ok((f, e))
+    }
+}
+
+impl Lower for ast::Do {
+    type Target = core::Expr;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Expr;
+        Ok(Expr::Do(self.exprs.lower(ctx)?))
     }
 }
 
@@ -524,10 +548,6 @@ impl Lower for ast::Pat {
                     expr = Expr::Apply(expr.into(), p.into());
                 }
                 expr
-            }
-            PatKind::Effect(n, ts) => {
-                let id = unwrap_resolved_ident(n)?.effect_id();
-                Expr::Effect(id, ts.lower(ctx)?)
             }
             PatKind::Tuple(ps) => {
                 let ty_name = format!("Tuple{}", ps.len());

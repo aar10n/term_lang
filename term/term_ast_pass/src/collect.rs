@@ -182,6 +182,11 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             .into_err();
         };
 
+        // register variable associated with handler
+        let var_id = self.ctx.ids.next_var_id();
+        self.ctx.register_id_name(var_id, name, span);
+        self.ctx.handler_var_ids.insert(id, var_id);
+
         self.scope_id = Some(id.into());
         handler.name.id = Some(id.into());
         handler.ty_args.visit(self)?;

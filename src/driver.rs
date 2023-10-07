@@ -30,7 +30,8 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
     let full = compose![
         pass::collect,
         pass::resolve,
-        pass::lower_decls /*pass::lower_exprs*/
+        pass::lower_decls,
+        pass::lower_exprs
     ];
     if let Err(errs) = pass::full_pass(&mut ctx, &mut module, full) {
         return Err(Report::from(errs));

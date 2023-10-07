@@ -91,17 +91,23 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     fn visit_pat(&mut self, pat: &mut Pat) -> Result<S, E> {
         pat.walk(self)
     }
-    fn visit_block(&mut self, block: &mut Block) -> Result<S, E> {
-        block.walk(self)
+    fn visit_case(&mut self, case_expr: &mut Case) -> Result<S, E> {
+        case_expr.walk(self)
     }
-    fn visit_case(&mut self, case: &mut Case) -> Result<S, E> {
-        case.walk(self)
-    }
-    fn visit_alt(&mut self, alt: &mut Alt) -> Result<S, E> {
+    fn visit_case_alt(&mut self, alt: &mut CaseAlt) -> Result<S, E> {
         alt.walk(self)
     }
-    fn visit_if(&mut self, if_: &mut If) -> Result<S, E> {
-        if_.walk(self)
+    fn visit_handle(&mut self, handle_expr: &mut Handle) -> Result<S, E> {
+        handle_expr.walk(self)
+    }
+    fn visit_handle_alt(&mut self, alt: &mut HandleAlt) -> Result<S, E> {
+        alt.walk(self)
+    }
+    fn visit_do(&mut self, do_expr: &mut Do) -> Result<S, E> {
+        do_expr.walk(self)
+    }
+    fn visit_if(&mut self, if_expr: &mut If) -> Result<S, E> {
+        if_expr.walk(self)
     }
     fn visit_func(
         &mut self,
@@ -130,6 +136,13 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     }
     fn visit_tuple(&mut self, items: &mut Vec<P<Expr>>) -> Result<S, E> {
         items.visit(self)
+    }
+    fn visit_record(&mut self, fields: &mut Vec<(Ident, P<Expr>)>) -> Result<S, E> {
+        fields.visit(self)
+    }
+    fn visit_record_field(&mut self, field: &mut (Ident, P<Expr>)) -> Result<S, E> {
+        self.visit_var_ident(&mut field.0)?;
+        field.1.visit(self)
     }
     fn visit_lit(&mut self, lit: &mut Lit) -> Result<S, E> {
         Ok(S::default())
@@ -306,7 +319,10 @@ impl Visit for Ef {
 
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         match &mut self.kind {
-            EfKind::Name(n, ts) => visitor.visit_effect_ident(n),
+            EfKind::Name(n, ts) => {
+                visitor.visit_effect_ident(n)?;
+                ts.visit(visitor)
+            }
             EfKind::Union(fs) => fs.visit(visitor),
             _ => Ok(S::default()),
         }
@@ -551,14 +567,16 @@ impl Visit for Expr {
                 y.visit(visitor)
             }
             ExprKind::Unary(_, x) => x.visit(visitor),
-            ExprKind::Block(block) => block.visit(visitor),
             ExprKind::Case(case) => case.visit(visitor),
+            ExprKind::Handle(handle) => handle.visit(visitor),
+            ExprKind::Do(block) => block.visit(visitor),
             ExprKind::If(if_) => if_.visit(visitor),
             ExprKind::Func(ident, params, body) => visitor.visit_func(ident, params, body),
             ExprKind::Var(bind, expr) => visitor.visit_var(bind, expr),
             ExprKind::Lambda(pats, expr) => visitor.visit_lambda(pats, expr),
             ExprKind::List(exprs) => exprs.visit(visitor),
             ExprKind::Tuple(exprs) => exprs.visit(visitor),
+            ExprKind::Record(fields) => fields.visit(visitor),
             ExprKind::Lit(lit) => visitor.visit_lit(lit),
             ExprKind::Ident(n) => visitor.visit_var_ident(n),
             ExprKind::Ref(id) => {
@@ -586,10 +604,6 @@ impl Visit for Pat {
                 visitor.visit_con_ident(n)?;
                 pats.visit(visitor)
             }
-            PatKind::Effect(n, tys) => {
-                visitor.visit_effect_ident(n)?;
-                tys.visit(visitor)
-            }
             PatKind::Tuple(pats) => pats.visit(visitor),
             PatKind::List(pats) => pats.visit(visitor),
             PatKind::Cons(head, tail) => {
@@ -600,21 +614,6 @@ impl Visit for Pat {
             PatKind::Ident(n) => visitor.visit_var_ident(n),
             _ => Ok(S::default()),
         }
-    }
-}
-
-impl Visit for Block {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_block(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        scoped! {visitor,
-            for e in &mut self.exprs {
-                e.visit(visitor)?;
-            }
-        }
-        Ok(S::default())
     }
 }
 
@@ -629,9 +628,9 @@ impl Visit for Case {
     }
 }
 
-impl Visit for Alt {
+impl Visit for CaseAlt {
     fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_alt(self)
+        visitor.visit_case_alt(self)
     }
 
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
@@ -639,6 +638,45 @@ impl Visit for Alt {
             self.pat.visit(visitor)?;
             self.expr.visit(visitor)
         }
+    }
+}
+
+impl Visit for Handle {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_handle(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        self.expr.visit(visitor)?;
+        self.alts.visit(visitor)
+    }
+}
+
+impl Visit for HandleAlt {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_handle_alt(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        scoped! {visitor,
+            self.ef.visit(visitor)?;
+            self.expr.visit(visitor)
+        }
+    }
+}
+
+impl Visit for Do {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_do(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        scoped! {visitor,
+            for e in &mut self.exprs {
+                e.visit(visitor)?;
+            }
+        }
+        Ok(S::default())
     }
 }
 
@@ -651,5 +689,16 @@ impl Visit for If {
         self.cond.visit(visitor)?;
         scoped!(visitor, self.then.visit(visitor)?);
         scoped!(visitor, self.else_.visit(visitor))
+    }
+}
+
+impl Visit for (Ident, P<Expr>) {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_record_field(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_var_ident(&mut self.0)?;
+        self.1.visit(visitor)
     }
 }

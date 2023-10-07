@@ -138,6 +138,16 @@ pub fn generalize(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<MonoVarId, Pol
     TyE::new(t, f, cs)
 }
 
+pub fn simplify(t: TyE) -> TyE {
+    let (t, f, mut cs) = t.into_tuple();
+    let (t, f2, cs2) = ty::simplify(t).into_tuple();
+    cs.extend(cs2);
+
+    let f = ef::simplify(f | f2);
+    let cs = constraint::cs::simplify(cs);
+    TyE::new(t, f, cs)
+}
+
 pub fn ty_occurs(x: &Ty, t: &TyE) -> bool {
     ty::ty_occurs(x, &t.ty) || ef::ty_occurs(x, &t.ef)
 }

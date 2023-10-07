@@ -65,6 +65,20 @@ pub fn generalize(
     }
 }
 
+pub fn simplify(c: Constraint) -> Constraint {
+    use Constraint::*;
+    match c {
+        Empty => Empty,
+        Eq(box t1, box t2) => Eq(crate::simplify(t1).into(), crate::simplify(t2).into()),
+        Class(id, ts) => Class(
+            id,
+            ts.into_iter()
+                .map(|t| crate::simplify(t))
+                .collect::<Vec<_>>(),
+        ),
+    }
+}
+
 pub fn subst_ty(r: &Ty, x: &Ty, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
@@ -120,6 +134,12 @@ pub mod cs {
         cs.into_iter()
             .map(|c| super::generalize(ctx, c, ps))
             .collect()
+    }
+
+    pub fn simplify(mut cs: Vec<Constraint>) -> Vec<Constraint> {
+        cs.sort();
+        cs.dedup();
+        cs.into_iter().map(|c| super::simplify(c)).collect()
     }
 
     pub fn subst_ty(r: &Ty, x: &Ty, cs: Vec<Constraint>) -> Vec<Constraint> {
