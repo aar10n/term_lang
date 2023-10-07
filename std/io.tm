@@ -12,7 +12,5 @@ effect IO
     | write_char : Char -> () ~ Except'IOError
     ;
 
-data IOError =
-    | MkIOError String
-    ;
+data IOError = IOError String;
 

@@ -34,17 +34,50 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         self.scopes.last_mut().unwrap()
     }
 
-    pub fn resolve_global<F>(&self, kind: &'static str, name: &Ident, pred: F) -> diag::Result<Id>
+    pub fn resolve_global_name<F>(
+        &self,
+        kind: &'static str,
+        name: &Ident,
+        pred: F,
+    ) -> diag::Result<Id>
     where
         F: FnOnce(&Id) -> bool,
     {
-        match self.ctx.name_to_id(name) {
-            Some(id) if pred(&id) => Ok(id),
+        match self.ctx.global_names.get(name) {
+            Some(id) if pred(&id) => Ok(*id),
             Some(id) => UnresolvedNameErr {
                 kind,
                 name: name.raw.to_string(),
                 span: name.span(),
-                conflict: self.ctx.id_as_span(id),
+                conflict: self.ctx.id_as_span(*id),
+            }
+            .into_err(),
+            None => UnresolvedNameErr {
+                kind,
+                name: name.raw.to_string(),
+                span: name.span(),
+                conflict: None,
+            }
+            .into_err(),
+        }
+    }
+
+    pub fn resolve_global_type<F>(
+        &self,
+        kind: &'static str,
+        name: &Ident,
+        pred: F,
+    ) -> diag::Result<Id>
+    where
+        F: FnOnce(&Id) -> bool,
+    {
+        match self.ctx.global_types.get(name) {
+            Some(id) if pred(&id) => Ok(*id),
+            Some(id) => UnresolvedNameErr {
+                kind,
+                name: name.raw.to_string(),
+                span: name.span(),
+                conflict: self.ctx.id_as_span(*id),
             }
             .into_err(),
             None => UnresolvedNameErr {
@@ -96,7 +129,7 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         }
 
         // now check the global namespace
-        if let Some(id) = self.ctx.globals.get(&name.raw) {
+        if let Some(id) = self.ctx.global_names.get(&name.raw) {
             match *id {
                 Id::DataCon(id) => {
                     // map data_con to its var_id first
@@ -125,13 +158,13 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         }
     }
 
-    pub fn resolve_ty(&self, name: &Ustr) -> Option<Id> {
+    pub fn resolve_ty(&self, name: &Ident) -> diag::Result<Id> {
         for scope in self.scopes.iter().rev() {
-            if let Some(id) = scope.tys.get(name) {
-                return Some((*id).into());
+            if let Some(id) = scope.tys.get(&name.raw) {
+                return Ok((*id).into());
             }
         }
-        None
+        self.resolve_global_type("type", name, |id| id.is_data() | id.is_poly_var())
     }
 }
 
@@ -173,7 +206,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_global("class", ident, Id::is_class)?;
+        let id = self.resolve_global_type("class", ident, Id::is_class)?;
         ident.id = Some(id);
         Ok(())
     }
@@ -183,7 +216,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_global("data", ident, Id::is_data)?;
+        let id = self.resolve_global_type("data", ident, Id::is_data)?;
         ident.id = Some(id);
         Ok(())
     }
@@ -193,7 +226,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_global("constructor", ident, Id::is_data_con)?;
+        let id = self.resolve_global_name("constructor", ident, Id::is_data_con)?;
         ident.id = Some(id);
         Ok(())
     }
@@ -203,7 +236,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_global("effect", ident, Id::is_effect)?;
+        let id = self.resolve_global_type("effect", ident, Id::is_effect)?;
         ident.id = Some(id);
         Ok(())
     }
@@ -213,7 +246,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_global("handler", ident, Id::is_handler)?;
+        let id = self.resolve_global_name("handler", ident, Id::is_handler)?;
         ident.id = Some(id);
         Ok(())
     }
@@ -222,12 +255,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
         if let Some(id) = ident.id {
             self.scope_mut().tys.insert(ident.raw, id.poly_var_id());
             return Ok(());
-        } else if let Some(id) = self.resolve_ty(ident) {
-            ident.id = Some(id);
-            return Ok(());
         }
 
-        let id = self.resolve_global("type", ident, |id| id.is_data() | id.is_poly_var())?;
+        let id = self.resolve_ty(ident)?;
         ident.id = Some(id);
         Ok(())
     }

@@ -5,7 +5,7 @@ use term_diag as diag;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use core::DeclId;
+use core::{DeclId, Exclusivity};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use term_print::{PrettyPrint, PrettyString};
 
@@ -68,7 +68,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = data.name.raw;
         let span = data.name.span();
 
-        if let Err(existing_id) = self.ctx.register_global_name(id, name, span) {
+        if let Err(existing_id) = self.ctx.register_global_type(id, name, span) {
             return DuplicateDeclErr {
                 kind: "data",
                 span,
@@ -115,7 +115,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = effect.name.raw;
         let span = effect.name.span();
 
-        if let Err(existing_id) = self.ctx.register_global_name(id, name, span) {
+        if let Err(existing_id) = self.ctx.register_global_type(id, name, span) {
             return DuplicateDeclErr {
                 kind: "effect",
                 span,
@@ -138,9 +138,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) = self
-            .ctx
-            .register_scoped_name(effect_id, op_id, name, span, false)
+        if let Err(existing_id) =
+            self.ctx
+                .register_scoped_name(effect_id, op_id, name, span, Exclusivity::None)
         {
             return DuplicateDeclErr {
                 kind: "effect operation",
@@ -201,9 +201,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) = self
-            .ctx
-            .register_scoped_name(handler_id, id, name, span, false)
+        if let Err(existing_id) =
+            self.ctx
+                .register_scoped_name(handler_id, id, name, span, Exclusivity::None)
         {
             return DuplicateDeclErr {
                 kind: "effect operation",
@@ -223,7 +223,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = class.name.raw;
         let span = class.name.span();
 
-        if let Err(existing_id) = self.ctx.register_global_name(id, name, span) {
+        if let Err(existing_id) = self.ctx.register_global_type(id, name, span) {
             return DuplicateDeclErr {
                 kind: "class",
                 span,
@@ -248,7 +248,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
 
         match self
             .ctx
-            .register_scoped_name(class_id, id, name, span, true)
+            .register_scoped_name(class_id, id, name, span, Exclusivity::Name)
         {
             Err(existing_id) => {
                 return DuplicateDeclErr {
@@ -291,7 +291,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
 
         match self
             .ctx
-            .register_scoped_name(inst_id, id, name, span, false)
+            .register_scoped_name(inst_id, id, name, span, Exclusivity::None)
         {
             Err(existing_id) => {
                 return DuplicateDeclErr {

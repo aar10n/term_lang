@@ -13,7 +13,7 @@ use print::PrettyPrint;
 
 use std::collections::BTreeMap;
 use std::vec;
-use ustr::ustr;
+use ustr::{ustr, UstrMap};
 
 pub trait Lower {
     type Target: Clone;
@@ -672,7 +672,7 @@ fn primitive(t: &str) -> core::Ty {
 }
 
 fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
-    expect_id_defined(ctx, "variable", name, |id| match id {
+    expect_id_defined(&ctx.global_names, "variable", name, |id| match id {
         Id::DataCon(id) => Some(ctx.con_var_ids[&id]),
         Id::Var(id) => Some(*id),
         _ => None,
@@ -680,21 +680,21 @@ fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
 }
 
 fn expect_data(ctx: &Context, name: &str) -> diag::Result<DataId> {
-    expect_id_defined(ctx, "data", name, Id::as_data)
+    expect_id_defined(&ctx.global_types, "data", name, Id::as_data)
 }
 
 fn expect_data_con(ctx: &Context, name: &str) -> diag::Result<DataConId> {
-    expect_id_defined(ctx, "constructor", name, Id::as_data_con)
+    expect_id_defined(&ctx.global_names, "constructor", name, Id::as_data_con)
 }
 
 fn expect_id_defined<T: Into<Id>>(
-    ctx: &Context,
+    map: &UstrMap<Id>,
     kind: &str,
     name: &str,
     f: impl Fn(&Id) -> Option<T>,
 ) -> diag::Result<T> {
     let name = ustr(name);
-    ctx.globals.get(&name).and_then(|id| f(id)).ok_or(
+    map.get(&name).and_then(|id| f(id)).ok_or(
         format!(
             "expected {} `{}` to be defined, but it was not found in the context",
             kind, name

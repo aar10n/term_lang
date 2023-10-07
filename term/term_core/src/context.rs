@@ -35,8 +35,10 @@ declare_union_id! {
 pub struct Context {
     pub ids: Ids,
     pub sources: SourceMap,
-    pub globals: UstrMap<Id>,
     pub builtins: UstrSet,
+
+    pub global_names: UstrMap<Id>,
+    pub global_types: UstrMap<Id>,
 
     pub classes: BTreeMap<ClassId, Class>,
     pub datas: BTreeMap<DataId, Data>,
@@ -56,8 +58,10 @@ impl Context {
         Self {
             ids: Ids::default(),
             sources: SourceMap::default(),
-            globals: UstrMap::default(),
             builtins: UstrSet::default(),
+
+            global_names: UstrMap::default(),
+            global_types: UstrMap::default(),
 
             classes: BTreeMap::default(),
             datas: BTreeMap::default(),
@@ -84,17 +88,13 @@ impl Context {
         self.id_names.get(&id).map(|(_, span)| *span)
     }
 
-    pub fn name_to_id(&self, name: &Ustr) -> Option<Id> {
-        self.globals.get(name).copied()
-    }
-
     pub fn register_id_name<T: Into<Id> + Copy>(&mut self, id: T, name: Ustr, span: Span) {
         self.id_names.insert(id.into(), (name, span));
     }
 
     pub fn register_builtin(&mut self, name: &str) {
         let name = Ustr::from(name);
-        if let Some(existing_id) = self.globals.get(&name) {
+        if let Some(existing_id) = self.global_names.get(&name) {
             panic!("builtin `{}` already registered as {:?}", name, existing_id);
         }
         if let Some(existing_func) = self.builtins.get(&name) {
@@ -110,13 +110,29 @@ impl Context {
         name: Ustr,
         span: Span,
     ) -> Result<(), Id> {
-        if let Some(existing_id) = self.globals.get(&name) {
+        if let Some(existing_id) = self.global_names.get(&name) {
             return Err(*existing_id);
         }
 
         self.id_names.insert(id.into(), (name, span));
-        println!("registering global {} : {:?}", name, id.into());
-        self.globals.insert(name, id.into());
+        println!("registering global name {} : {:?}", name, id.into());
+        self.global_names.insert(name, id.into());
+        Ok(())
+    }
+
+    pub fn register_global_type<T: Into<Id> + Copy>(
+        &mut self,
+        id: T,
+        name: Ustr,
+        span: Span,
+    ) -> Result<(), Id> {
+        if let Some(existing_id) = self.global_types.get(&name) {
+            return Err(*existing_id);
+        }
+
+        self.id_names.insert(id.into(), (name, span));
+        println!("registering global type {} : {:?}", name, id.into());
+        self.global_types.insert(name, id.into());
         Ok(())
     }
 
@@ -126,13 +142,23 @@ impl Context {
         id: T,
         name: Ustr,
         span: Span,
-        excl_global: bool,
+        excl: Exclusivity,
     ) -> Result<(), Id> {
         let id = id.into();
         let parent_id = parent_id.into();
 
-        if let Some(existing_id) = self.globals.get(&name) && excl_global {
-            return Err(*existing_id);
+        match excl {
+            Exclusivity::Name => {
+                if let Some(existing_id) = self.global_names.get(&name) {
+                    return Err(*existing_id);
+                }
+            }
+            Exclusivity::Type => {
+                if let Some(existing_id) = self.global_types.get(&name) {
+                    return Err(*existing_id);
+                }
+            }
+            Exclusivity::None => {}
         }
 
         if let Some(existing_id) = self
@@ -163,6 +189,12 @@ impl Context {
             .and_then(|ns| ns.names.get(name))
             .copied()
     }
+}
+
+pub enum Exclusivity {
+    Name,
+    Type,
+    None,
 }
 
 /// A scope for names.
