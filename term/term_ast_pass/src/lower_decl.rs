@@ -7,7 +7,7 @@ use term_solve as solve;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use core::TyE;
+use core::{Ef, TyE};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use lower::Lower;
 use print::{PrettyPrint, PrettyString};
@@ -62,10 +62,30 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
         Ok(())
     }
 
-    fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> diag::Result<()> {
-        let effect = effect.lower(&mut self.ctx)?;
+    fn visit_effect_decl(&mut self, effect_decl: &mut EffectDecl) -> diag::Result<()> {
+        let effect = effect_decl.lower(&mut self.ctx)?;
         solve::check_valid_type_params(&mut self.ctx, &effect.params, &effect.constraints)?;
         self.ctx.effects.insert(effect.id, effect);
+        effect_decl.walk(self)
+    }
+
+    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> diag::Result<()> {
+        let op_id = op.name.id.unwrap().effect_op_id();
+        let var_id = self.ctx.op_var_ids[&op_id];
+        let effect = &self.ctx.effects[&op_id.parent];
+        let ps = effect
+            .params
+            .iter()
+            .map(|id| TyE::pure(core::Ty::Poly(*id)))
+            .collect::<Vec<_>>();
+
+        let ty = op
+            .ty
+            .lower(self.ctx)?
+            .with_effect(Ef::Effect(op_id.parent, ps));
+
+        let def = core::Def::new_builtin(var_id, ty);
+        self.ctx.defs.insert(var_id, def);
         Ok(())
     }
 

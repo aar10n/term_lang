@@ -26,6 +26,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
     use self::Lit::*;
     Ok(match e {
         Type(box t) => t,
+        Wildcard => TyE::pure(Ty::Infer),
         Lit(l) => TyE::pure(l.as_ty()),
         Sym(s) => todo!(),
         Var(id) => {
@@ -35,15 +36,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
                 match ctx.resolve_local_var(id) {
                     Some((e, t)) => (e, t),
                     None => {
-                        if let Some(span) = ctx.id_as_span(id) {
-                            return Diagnostic::error(
+                        return if let Some(span) = ctx.id_as_span(id) {
+                            Diagnostic::error(
                                 format!("name not found: {}", id.pretty_string(ctx)),
                                 span,
                             )
-                            .into_err();
+                            .into_err()
                         } else {
-                            return Err(format!("name not found: {}", id.pretty_string(ctx))
-                                .into_diagnostic());
+                            Err(format!("name not found: {}", id.pretty_string(ctx))
+                                .into_diagnostic())
                         }
                     }
                 }
@@ -186,10 +187,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             }
             TyE::new(res_t, res_f, vec![])
         }
-
-        Wildcard => todo!(),
-        EfCon(_, _) => todo!(),
+        Effect(_, _) => todo!(),
         Do(_) => todo!(),
+
+        Span(s, box e) => {
+            ctx.spans.push(s);
+            let t = algorithmj(ctx, e)?;
+            ctx.spans.pop();
+            t
+        }
     })
 }
 
@@ -208,7 +214,7 @@ pub fn solve_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<PatSolu
             PatSolution::new(vec![], None)
         }
         (Var(x), t) => PatSolution::new(vec![(Var(x), TyE::pure(t))], None),
-        (EfCon(eff_id, ts1), _) => {
+        (Effect(eff_id, ts1), _) => {
             let mut fs = f.into_hashset();
             let f = Ef::Effect(eff_id, ts1.clone());
             if !fs.contains(&f) {
@@ -225,8 +231,8 @@ pub fn solve_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<PatSolu
             PatSolution::new(vec![], Some(f))
         }
         (p, t) => {
-            ctx.ty_set.print_stdout(ctx);
-            println!("-----");
+            // ctx.ty_set.print_stdout(ctx);
+            // println!("-----");
             return format!(
                 "pattern `{}` does not match type `{}`",
                 p.pretty_string(ctx),

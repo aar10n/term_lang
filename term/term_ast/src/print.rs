@@ -51,9 +51,9 @@ impl<'a> PrettyPrint<Context<'a>> for ItemKind {
                 writeln!(out, "{tab}{TAG}DataDecl{RESET}")?;
                 data_decl.pretty_print(out, ctx, level + 1)?;
             }
-            ItemKind::EffectDecl(effect_decl) => {
+            ItemKind::EffectDecl(effect) => {
                 writeln!(out, "{tab}{TAG}EffectDecl{RESET}")?;
-                effect_decl.pretty_print(out, ctx, level + 1)?;
+                effect.pretty_print(out, ctx, level + 1)?
             }
             ItemKind::EffectHandler(effect_handler) => {
                 writeln!(out, "{tab}{TAG}EffectHandler{RESET}")?;

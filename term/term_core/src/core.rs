@@ -46,6 +46,9 @@ declare_union_id!(Id {
 /// An generalized expression.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Expr {
+    /// Type
+    Type(P<TyE>),
+
     /// Wildcard.
     Wildcard,
     /// Literal.
@@ -54,10 +57,8 @@ pub enum Expr {
     Sym(Ustr),
     /// Variable.
     Var(VarId),
-    /// Effect constructor.
-    EfCon(EffectId, Vec<TyE>),
-    /// Type
-    Type(P<TyE>),
+    /// Effect.
+    Effect(EffectId, Vec<TyE>),
 
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
@@ -69,6 +70,9 @@ pub enum Expr {
     Case(P<Expr>, Vec<(Expr, Expr)>),
     /// Do expression.
     Do(Vec<Expr>),
+
+    /// Source span info.
+    Span(Span, P<Expr>),
 }
 
 impl Expr {
@@ -132,6 +136,14 @@ impl TyE {
 
     pub fn has_effect(&self) -> bool {
         !self.ef.is_pure()
+    }
+
+    pub fn with_effect(self, ef: Ef) -> Self {
+        Self {
+            ty: self.ty,
+            ef: self.ef | ef,
+            cs: self.cs,
+        }
     }
 
     pub fn into_tuple(self) -> (Ty, Ef, Vec<Constraint>) {
@@ -406,6 +418,8 @@ pub struct EffectOp {
 /// An effect handler.
 #[derive(Clone, Debug)]
 pub struct Handler {
+    /// The effect id.
+    pub effect_id: EffectId,
     /// The handler id.
     pub id: HandlerId,
     /// Type parameters.
@@ -413,7 +427,7 @@ pub struct Handler {
     /// Constraints.
     pub constraints: Vec<Constraint>,
     /// Handler operations.
-    pub ops: Vec<VarId>,
+    pub ops: BTreeMap<EffectOpId, VarId>,
 }
 
 /// A type class.

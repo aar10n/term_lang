@@ -31,15 +31,15 @@ impl PrettyPrint<Context> for Expr {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
         match self {
+            Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
             Expr::Wildcard => write!(out, "{PUNCT}_{RESET}"),
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
             Expr::Sym(n) => write!(out, "{BLUE}{}{RESET}", n),
-            Expr::Var(id) => write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id)),
-            Expr::EfCon(id, ts) => {
-                write!(out, "{BLUE}{}{RESET}", id_to_string(ctx, *id, false))?;
+            Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
+            Expr::Effect(id, ts) => {
+                id.pretty_print(out, ctx, level)?;
                 write_args_list(out, ctx, ts, QUOTE, " ")
             }
-            Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
 
             Expr::Apply(a, b) => {
                 write!(out, "{LPARN}")?;
@@ -50,7 +50,7 @@ impl PrettyPrint<Context> for Expr {
                 Ok(())
             }
             Expr::Lambda(id, t) => {
-                write!(out, "{LAMBDA}{GREEN}{}{RESET}{PERIOD}", ctx.id_as_str(*id))?;
+                write!(out, "{LAMBDA}{}{PERIOD}", id.pretty_string(ctx))?;
                 t.pretty_print(out, ctx, 0)
             }
             Expr::Let(b, e) => {
@@ -71,6 +71,8 @@ impl PrettyPrint<Context> for Expr {
                 writeln!(out, "{KEYWORD}do{RESET}")?;
                 write_bulleted(out, ctx, es, level + 1)
             }
+
+            Expr::Span(_, box e) => e.pretty_print(out, ctx, level),
         }
     }
 }
@@ -338,9 +340,8 @@ impl PrettyPrint<Context> for Effect {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
         writeln!(out, "{tab}{TAG}Effect{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
+        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", self.id.pretty_string(ctx))?;
         if !self.params.is_empty() {
             write!(out, "{ttab}{ATTR}params:{RESET} ")?;
             write_list(out, ctx, " ", &self.params)?;
@@ -382,9 +383,13 @@ impl PrettyPrint<Context> for Handler {
         let tab = TABWIDTH.repeat(info);
         let ttab = format!("{tab}{TABWIDTH}");
         let id = id_to_string(ctx, self.id, true);
-        // let ops = self.ops.values().collect::<Vec<_>>();
         writeln!(out, "{tab}{TAG}Handler{RESET}")?;
         writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
+        writeln!(
+            out,
+            "{ttab}{ATTR}effect:{RESET} {}",
+            self.effect_id.pretty_string(ctx)
+        )?;
         if !self.params.is_empty() {
             write!(out, "{ttab}{ATTR}params:{RESET} ")?;
             write_list(out, ctx, " ", &self.params)?;
@@ -396,7 +401,15 @@ impl PrettyPrint<Context> for Handler {
             writeln!(out)?;
         }
         writeln!(out, "{ttab}{ATTR}ops:{RESET}")?;
-        write_bulleted(out, ctx, &self.ops, info + 2)
+        for (op_id, var_id) in self.ops.iter() {
+            writeln!(
+                out,
+                "{ttab}{tab}{DELIM}-{RESET} {} {PUNCT}=>{RESET} {}",
+                Id::from(*op_id).pretty_string(ctx),
+                Id::from(*var_id).pretty_string(ctx),
+            )?;
+        }
+        Ok(())
     }
 }
 
@@ -478,19 +491,7 @@ impl PrettyPrint<Context> for Id {
         ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
-        match self {
-            Id::Class(id) => write!(out, "{CYAN}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Data(id) => write!(out, "{CYAN}{}{RESET}", ctx.id_as_str(*id)),
-            Id::DataCon(id) => write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Effect(id) => write!(out, "{CYAN}{}{RESET}", ctx.id_as_str(*id)),
-            Id::EffectOp(id) => write!(out, "{RED}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Decl(id) => write!(out, "{BOLD}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Handler(id) => write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Inst(id) => write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id)),
-            Id::MonoVar(id) => write!(out, "{GREEN}{}{RESET}", id),
-            Id::PolyVar(id) => write!(out, "{MAGENTA}{}{RESET}", ctx.id_as_str(*id)),
-            Id::Var(id) => write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id)),
-        }
+        write!(out, "{}", id_to_string(ctx, *self, false))
     }
 }
 
@@ -590,13 +591,13 @@ where
 
 fn id_to_string<I>(ctx: &Context, id: I, is_decl: bool) -> String
 where
-    I: Into<Id> + Copy + std::fmt::Display,
+    I: Into<Id> + Copy,
 {
-    let (_, color) = id_to_color(id.into());
+    let (raw, color) = id_to_color(id.into());
     if is_decl {
-        format!("{color}{}{RESET} ({})", ctx.id_as_str(id), id)
+        format!("{color}{}<{}>{RESET}", ctx.id_as_str(id), raw)
     } else {
-        format!("{color}{}{RESET}", ctx.id_as_str(id))
+        format!("{color}{}<{}>{RESET}", ctx.id_as_str(id), raw)
     }
 }
 

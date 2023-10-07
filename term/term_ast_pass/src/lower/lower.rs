@@ -196,17 +196,18 @@ impl Lower for ast::EffectHandler {
     type Target = core::Handler;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        let effect_id = self.effect.id.unwrap().effect_id();
+        let effect_id = unwrap_resolved_ident(&self.effect)?.effect_id();
         let id = self.name.id.unwrap().handler_id();
         let (params, constraints) = self.ty_args.lower(ctx)?;
 
-        let mut ops = vec![];
-        for def in self.ops.lower(ctx)? {
-            ops.push(def.id);
+        let mut ops = BTreeMap::new();
+        for (op_id, def) in self.ops.lower(ctx)? {
+            ops.insert(op_id, def.id);
             ctx.defs.insert(def.id, def);
         }
 
         Ok(core::Handler {
+            effect_id,
             id,
             params,
             constraints,
@@ -216,10 +217,15 @@ impl Lower for ast::EffectHandler {
 }
 
 impl Lower for ast::EffectOpImpl {
-    type Target = core::Def;
+    type Target = (EffectOpId, core::Def);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Expr, Ty, TyE};
+
+        let op_id = match self.op_id {
+            Some(id) => id,
+            None => format!("expected op id").into_err()?,
+        };
         let id = unwrap_resolved_ident(&self.name)?.var_id();
         let body = if self.params.is_empty() {
             // variable
@@ -229,7 +235,7 @@ impl Lower for ast::EffectOpImpl {
             lower_lambda(ctx, &self.params, &self.expr)?
         };
 
-        Ok(core::Def::new(id, TyE::infer(), body))
+        Ok((op_id, core::Def::new(id, TyE::infer(), body)))
     }
 }
 
@@ -384,7 +390,7 @@ impl Lower for ast::Expr {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::ExprKind;
         use core::{Bind, Expr, Id};
-        Ok(match &self.kind {
+        let e = match &self.kind {
             ExprKind::Apply(a, b) => {
                 let a = a.lower(ctx)?;
                 let b = b.lower(ctx)?;
@@ -406,7 +412,8 @@ impl Lower for ast::Expr {
             ExprKind::If(i) => i.lower(ctx)?,
             ExprKind::Func(n, ps, expr) => {
                 let id = unwrap_resolved_ident(n)?.var_id();
-                Expr::Let(Bind::Rec(id, lower_lambda(ctx, ps, expr)?.into()), None)
+                let body = lower_lambda(ctx, ps, expr)?;
+                Expr::Let(Bind::Rec(id, body.into()), None)
             }
             ExprKind::Var(pat, expr) => {
                 let pat = pat.lower(ctx)?;
@@ -445,7 +452,8 @@ impl Lower for ast::Expr {
                 None => Ok(Expr::Sym(n.raw)),
             }?,
             ExprKind::Ref(id) => todo!(),
-        })
+        };
+        Ok(Expr::Span(self.span, e.into()))
     }
 }
 
@@ -503,7 +511,7 @@ impl Lower for ast::Pat {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::PatKind;
         use core::{DataId, Expr, Id, Lit};
-        Ok(match &self.kind {
+        let e = match &self.kind {
             PatKind::Unit => Expr::Lit(Lit::Unit),
             PatKind::Wildcard => Expr::Wildcard,
             PatKind::DataCon(n, ps) => {
@@ -519,7 +527,7 @@ impl Lower for ast::Pat {
             }
             PatKind::Effect(n, ts) => {
                 let id = unwrap_resolved_ident(n)?.effect_id();
-                Expr::EfCon(id, ts.lower(ctx)?)
+                Expr::Effect(id, ts.lower(ctx)?)
             }
             PatKind::Tuple(ps) => {
                 let ty_name = format!("Tuple{}", ps.len());
@@ -550,11 +558,9 @@ impl Lower for ast::Pat {
                 Expr::Apply(x.into(), xs.into())
             }
             PatKind::Lit(l) => l.lower(ctx)?,
-            PatKind::Ident(n) => {
-                let id = unwrap_resolved_ident(n)?.var_id();
-                Expr::Var(id)
-            }
-        })
+            PatKind::Ident(n) => Expr::Var(unwrap_resolved_ident(n)?.var_id()),
+        };
+        Ok(Expr::Span(self.span, e.into()))
     }
 }
 

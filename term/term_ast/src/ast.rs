@@ -7,7 +7,7 @@ pub use common::{
     span::{Span, Spanned},
     P,
 };
-use core::{DeclId, EffectOpId, Id, InstId, VarId};
+use core::{DeclId, EffectId, EffectOpId, Id, InstId, VarId};
 pub use node::Node;
 
 pub use either::{Either, Either::*};
@@ -244,6 +244,8 @@ impl EffectHandler {
 /// An effect operation implementation.
 #[derive(Clone, Debug, PartialEq)]
 pub struct EffectOpImpl {
+    /// Associated effect op id.
+    pub op_id: Option<EffectOpId>,
     /// Operation name.
     pub name: Ident,
     /// Operation parameters.
@@ -257,6 +259,7 @@ pub struct EffectOpImpl {
 impl EffectOpImpl {
     pub fn new(name: Ident, params: Vec<P<Pat>>, expr: P<Expr>) -> Self {
         Self {
+            op_id: None,
             name,
             params,
             expr,

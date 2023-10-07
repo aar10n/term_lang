@@ -27,16 +27,32 @@ macro_rules! debug_println {
 }
 pub(crate) use debug_println;
 
-pub fn solve<T: AsMut<core::Context>>(ctx: &mut T, e: &Expr, t: &TyE) -> diag::Result<TyE> {
-    let mut ctx = Context::new(ctx.as_mut());
-    let u = hm::algorithmj(&mut ctx, e.clone())?;
+/// Solves a type equation.
+pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
+    let mut ctx = Context::new(ctx);
+    let u = match hm::algorithmj(&mut ctx, e.clone()) {
+        Ok(u) => Ok(u),
+        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
+            e.with_span(s)
+        } else {
+            e
+        }),
+    }?;
     let u = update(&mut ctx, u);
     Ok(unify(&mut ctx, t.clone(), u)?)
 }
 
+/// Infers the most general type of an expression.
 pub fn infer(ctx: &mut core::Context, e: &Expr) -> diag::Result<TyE> {
     let mut ctx = Context::new(ctx);
-    let result = hm::algorithmj(&mut ctx, e.clone())?;
+    let result = match hm::algorithmj(&mut ctx, e.clone()) {
+        Ok(u) => Ok(u),
+        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
+            e.with_span(s)
+        } else {
+            e
+        }),
+    }?;
     let result = generalize(&mut ctx, result, &mut Default::default());
     Ok(update(&mut ctx, result))
 }

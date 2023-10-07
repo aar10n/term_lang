@@ -80,7 +80,7 @@ pub trait Visitor<'a, S: Default, E>: Sized {
         self.visit_ty_ident(param)
     }
     fn visit_ty_args(&mut self, ty_args: &mut TyArgs) -> Result<S, E> {
-        ty_args.visit(self)
+        ty_args.walk(self)
     }
     fn visit_constraint(&mut self, constraint: &mut Constraint) -> Result<S, E> {
         constraint.walk(self)
@@ -512,10 +512,10 @@ impl Visit for TyArgs {
     }
 
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        self.args.visit(visitor)?;
         for param in &mut self.params {
             visitor.visit_ty_param(param)?;
         }
+        self.args.visit(visitor)?;
         self.constraints.visit(visitor)
     }
 }

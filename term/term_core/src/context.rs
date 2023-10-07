@@ -92,7 +92,7 @@ impl Context {
         self.id_names.insert(id.into(), (name, span));
     }
 
-    pub fn declare_builtin(&mut self, name: &str) {
+    pub fn register_builtin(&mut self, name: &str) {
         let name = Ustr::from(name);
         if let Some(existing_id) = self.globals.get(&name) {
             panic!("builtin `{}` already registered as {:?}", name, existing_id);
@@ -115,6 +115,7 @@ impl Context {
         }
 
         self.id_names.insert(id.into(), (name, span));
+        println!("registering global {} : {:?}", name, id.into());
         self.globals.insert(name, id.into());
         Ok(())
     }
@@ -125,11 +126,12 @@ impl Context {
         id: T,
         name: Ustr,
         span: Span,
+        excl_global: bool,
     ) -> Result<(), Id> {
         let id = id.into();
         let parent_id = parent_id.into();
 
-        if let Some(existing_id) = self.globals.get(&name) {
+        if let Some(existing_id) = self.globals.get(&name) && excl_global {
             return Err(*existing_id);
         }
 
@@ -148,6 +150,18 @@ impl Context {
             .names
             .insert(name, id);
         Ok(())
+    }
+
+    pub fn resolve_scoped_name<T: Into<ParentId> + Copy>(
+        &self,
+        parent_id: T,
+        name: &Ustr,
+    ) -> Option<Id> {
+        let parent_id = parent_id.into();
+        self.scopes
+            .get(&parent_id)
+            .and_then(|ns| ns.names.get(name))
+            .copied()
     }
 }
 

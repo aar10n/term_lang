@@ -18,7 +18,7 @@ use print::{PrettyPrint, PrettyString};
 pub fn new_context() -> Context {
     let mut ctx = Context::new();
 
-    ctx.declare_builtin("panic");
+    ctx.register_builtin("panic");
     ctx
 }
 
@@ -30,8 +30,7 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
     let full = compose![
         pass::collect,
         pass::resolve,
-        pass::lower_decls,
-        pass::lower_exprs
+        pass::lower_decls /*pass::lower_exprs*/
     ];
     if let Err(errs) = pass::full_pass(&mut ctx, &mut module, full) {
         return Err(Report::from(errs));
@@ -41,46 +40,4 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
     ctx.print_stdout(&());
     println!("Done");
     Ok(())
-}
-
-fn parse_expr(src: impl AsRef<str>) -> core::Expr {
-    let mut ctx = Context::new();
-    parse_lower_unwrap(&mut ctx, src, parse::parse_expr)
-}
-
-fn parse_ty(src: impl AsRef<str>) -> core::TyE {
-    let mut ctx = Context::new();
-    parse_lower_unwrap(&mut ctx, src, parse::parse_ty)
-}
-
-fn parse_lower_unwrap<'a, T, E>(
-    ctx: &'a mut Context,
-    src: impl AsRef<str>,
-    parse_fn: fn(&SourceFile) -> Result<T, E>,
-) -> T::Target
-where
-    T: Lower + PrettyPrint<ast::Context<'a>, usize>,
-    E: IntoDiagnostic,
-{
-    let sources = SourceMap::from(src.as_ref());
-    let file = sources.first().unwrap();
-    let result = match parse_fn(file) {
-        Ok(o) => o,
-        Err(e) => {
-            println!("Failed to parse: {:?}", src.as_ref());
-            Report::from(e).print_stderr(&sources).unwrap();
-            std::process::exit(1);
-        }
-    };
-
-    let mut ctx = ast::Context::new(ctx);
-    println!("{}", result.pretty_string(&ctx));
-    match result.lower(&mut ctx) {
-        Ok(o) => o,
-        Err(e) => {
-            println!("Failed to lower: {:?}", src.as_ref());
-            Report::from(e).print_stderr(&sources).unwrap();
-            std::process::exit(1);
-        }
-    }
 }

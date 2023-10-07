@@ -167,11 +167,15 @@ fn format_code_snippet<Output: io::Write>(
 
     let lines = source.lines_for_span(span);
     writeln!(out, " {:>margin$} {sep}", "")?;
-    for (i, line) in lines.into_iter() {
+    for (i, line) in lines.iter() {
         writeln!(out, " {:>margin$} {sep} {}", i, line)?;
     }
 
     if let Some((style, col, color)) = marker {
+        if lines.len() > 1 {
+            return Ok(());
+        }
+
         let marker = match style {
             // MarkerStyle::Single(c) => format!("{}{}", color, c),
             MarkerStyle::SingleWithNote(c, note) => format!("{}{} {}", color, c, note),

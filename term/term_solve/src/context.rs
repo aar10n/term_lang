@@ -2,7 +2,7 @@ use crate::type_env::{TSet, TypeEnv};
 use crate::union_find::UnionFind;
 use term_core as core;
 
-use core::{Constraint, Ef, Expr, MonoVarId, Ty, TyE, VarId};
+use core::{Constraint, Ef, Expr, MonoVarId, Span, Ty, TyE, VarId};
 
 use std::collections::{BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
@@ -21,6 +21,8 @@ pub struct Context<'a> {
     pub ty_set: UnionFind<Ty>,
     /// Working effect set.
     pub ef_set: UnionFind<Ef>,
+    /// Relevant source spans.
+    pub spans: Vec<Span>,
 }
 
 impl<'a> Context<'a> {
@@ -31,6 +33,7 @@ impl<'a> Context<'a> {
             open: BTreeSet::default(),
             ty_set: UnionFind::new(),
             ef_set: UnionFind::new(),
+            spans: Vec::default(),
         }
     }
 

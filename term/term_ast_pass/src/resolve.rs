@@ -5,7 +5,7 @@ use term_diag as diag;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use core::{Id, PolyVarId, VarId};
+use core::{Id, ParentId, PolyVarId, VarId};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 
 use std::ops::{Deref, DerefMut};
@@ -14,6 +14,7 @@ use ustr::{Ustr, UstrMap};
 struct ResolveVisitor<'v, 'ast> {
     ctx: &'v mut Context<'ast>,
     scopes: Vec<Scope>,
+    scope_id: Option<Id>,
 }
 
 impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
@@ -21,6 +22,7 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         Self {
             ctx,
             scopes: vec![Scope::default()],
+            scope_id: None,
         }
     }
 
@@ -37,6 +39,36 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         F: FnOnce(&Id) -> bool,
     {
         match self.ctx.name_to_id(name) {
+            Some(id) if pred(&id) => Ok(id),
+            Some(id) => UnresolvedNameErr {
+                kind,
+                name: name.raw.to_string(),
+                span: name.span(),
+                conflict: self.ctx.id_as_span(id),
+            }
+            .into_err(),
+            None => UnresolvedNameErr {
+                kind,
+                name: name.raw.to_string(),
+                span: name.span(),
+                conflict: None,
+            }
+            .into_err(),
+        }
+    }
+
+    pub fn resolve_scoped<T, F>(
+        &self,
+        kind: &'static str,
+        parent_id: T,
+        name: &Ident,
+        pred: F,
+    ) -> diag::Result<Id>
+    where
+        T: Into<ParentId> + Copy,
+        F: FnOnce(&Id) -> bool,
+    {
+        match self.ctx.resolve_scoped_name(parent_id, &name.raw) {
             Some(id) if pred(&id) => Ok(id),
             Some(id) => UnresolvedNameErr {
                 kind,
@@ -108,6 +140,28 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
     }
     fn pop_scope(&mut self) {
         let s = self.scopes.pop();
+    }
+
+    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
+        self.visit_effect_ident(&mut handler.effect)?;
+        self.visit_handler_ident(&mut handler.name)?;
+
+        self.scope_id = handler.effect.id;
+        handler.ty_args.visit(self)?;
+        handler.ops.visit(self)?;
+        self.scope_id = None;
+        Ok(())
+    }
+
+    fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> diag::Result<()> {
+        let effect_id = self.scope_id.unwrap().effect_id();
+        let op_id = self
+            .resolve_scoped("operation", effect_id, &mut op.name, Id::is_effect_op)?
+            .effect_op_id();
+
+        op.op_id = Some(op_id);
+        op.params.visit(self)?;
+        op.expr.visit(self)
     }
 
     fn visit_class_ident(&mut self, ident: &mut Ident) -> diag::Result<()> {

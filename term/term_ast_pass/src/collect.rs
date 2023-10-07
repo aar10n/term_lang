@@ -107,7 +107,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         self.ctx.con_var_ids.insert(id, var_id);
 
         con.name.id = Some(id.into());
-        Ok(())
+        con.fields.visit(self)
     }
 
     fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> diag::Result<()> {
@@ -134,11 +134,14 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
 
     fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> diag::Result<()> {
         let effect_id = self.scope_id.unwrap().effect_id();
-        let id = self.ctx.ids.next_decl_id();
+        let op_id = self.ctx.ids.next_effect_op_id(effect_id);
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) = self.ctx.register_scoped_name(effect_id, id, name, span) {
+        if let Err(existing_id) = self
+            .ctx
+            .register_scoped_name(effect_id, op_id, name, span, false)
+        {
             return DuplicateDeclErr {
                 kind: "effect operation",
                 span,
@@ -146,12 +149,26 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             }
             .into_err();
         };
-        op.name.id = Some(id.into());
-        Ok(())
+
+        // register and associate variable id with this operation.
+        let var_id = self.ctx.ids.next_var_id();
+        self.ctx.register_id_name(var_id, name, span);
+        self.ctx.op_var_ids.insert(op_id, var_id);
+
+        if let Err(existing_id) = self.ctx.register_global_name(var_id, name, span) {
+            return DuplicateDeclErr {
+                kind: "effect operation",
+                span,
+                first: self.ctx.id_as_span(existing_id).unwrap(),
+            }
+            .into_err();
+        };
+
+        op.name.id = Some(op_id.into());
+        op.ty.visit(self)
     }
 
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let effect_id = handler.effect.id.unwrap().effect_id();
         let id = self.ctx.ids.next_handler_id();
         let name = handler.name.raw;
         let span = handler.name.span();
@@ -179,7 +196,10 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) = self.ctx.register_scoped_name(handler_id, id, name, span) {
+        if let Err(existing_id) = self
+            .ctx
+            .register_scoped_name(handler_id, id, name, span, false)
+        {
             return DuplicateDeclErr {
                 kind: "effect operation",
                 span,
@@ -187,8 +207,10 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             }
             .into_err();
         };
+
         op.name.id = Some(id.into());
-        Ok(())
+        op.params.visit(self)?;
+        op.expr.visit(self)
     }
 
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
@@ -219,7 +241,10 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = method.name.raw;
         let span = method.name.span();
 
-        match self.ctx.register_scoped_name(class_id, id, name, span) {
+        match self
+            .ctx
+            .register_scoped_name(class_id, id, name, span, true)
+        {
             Err(existing_id) => {
                 return DuplicateDeclErr {
                     kind: "member",
@@ -235,7 +260,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         self.all_decls.insert(name, (id, method.span()));
 
         method.name.id = Some(id.into());
-        Ok(())
+        method.ty_params.visit(self)?;
+        method.ty.visit(self)
     }
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
@@ -258,7 +284,10 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         let name = method.name.raw;
         let span = method.name.span();
 
-        match self.ctx.register_scoped_name(inst_id, id, name, span) {
+        match self
+            .ctx
+            .register_scoped_name(inst_id, id, name, span, false)
+        {
             Err(existing_id) => {
                 return DuplicateDeclErr {
                     kind: "member",
@@ -271,7 +300,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         };
 
         method.name.id = Some(id.into());
-        Ok(())
+        method.params.visit(self)?;
+        method.expr.visit(self)
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
