@@ -254,7 +254,27 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
             result
         }
-        Do(_) => todo!(),
+        Do(es) => {
+            debug_println!(
+                "{tab}[do ] solving: {}",
+                es.iter()
+                    .map(|e| e.pretty_string(ctx))
+                    .collect::<Vec<_>>()
+                    .join("\n\t")
+            );
+
+            let mut res_f = Ef::Pure;
+            let mut result = TyE::pure(Ty::Unit);
+            for e in es {
+                let (t, f) = algorithmj(ctx, e, level + 1)?.split_ef();
+                res_f = res_f | f;
+                result = t;
+            }
+
+            let result = result.with_ef(res_f);
+            debug_println!("{tab}[do ] done: {}", result.pretty_string(ctx));
+            result
+        }
 
         Span(s, box e) => {
             ctx.spans.push(s);

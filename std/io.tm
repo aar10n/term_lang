@@ -19,7 +19,8 @@ effect IO
 data IOError = IOError { msg : String };
 
 
-test () = handle (raise 1)
-    | Except'Int ~> { raise = _ => () }
-    | () ~> println "ok"
+test () = do
+    | raise 1
+    | println "hi"
+    | ['a']
     ;
