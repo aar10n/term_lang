@@ -297,16 +297,6 @@ impl Visit for Ty {
                     ty.visit(visitor)
                 }
             }
-            TyKind::Ref(id) => {
-                let ty = visitor
-                    .context()
-                    .tys
-                    .get(id)
-                    .expect("invalid type node id")
-                    .to_owned();
-                let mut ty = RefCell::borrow_mut(&ty);
-                ty.visit(visitor)
-            }
             _ => Ok(S::default()),
         }
     }
@@ -579,16 +569,6 @@ impl Visit for Expr {
             ExprKind::Record(fields) => fields.visit(visitor),
             ExprKind::Lit(lit) => visitor.visit_lit(lit),
             ExprKind::Ident(n) => visitor.visit_var_ident(n),
-            ExprKind::Ref(id) => {
-                let expr = visitor
-                    .context()
-                    .exprs
-                    .get(id)
-                    .expect("invalid expr node id")
-                    .to_owned();
-                let mut expr = RefCell::borrow_mut(&expr);
-                expr.visit(visitor)
-            }
         }
     }
 }

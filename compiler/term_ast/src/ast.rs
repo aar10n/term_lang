@@ -14,9 +14,6 @@ pub use either::{Either, Either::*};
 use std::ops::Deref;
 use ustr::{ustr, Ustr};
 
-/// An id for an AST node.
-declare_id!(NodeId);
-
 /// A module.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Module {
@@ -89,8 +86,6 @@ pub enum TyKind {
     Effect(P<Ty>, P<Ef>),
     /// Forall quantifier.
     Forall(TyParams, P<Ty>),
-    /// A type node reference.
-    Ref(NodeId),
 }
 
 /// An effect.
@@ -520,8 +515,6 @@ pub enum ExprKind {
     Lit(Lit),
     /// An identifier.
     Ident(Ident),
-    /// An expression reference.
-    Ref(NodeId),
 }
 
 impl ExprKind {

@@ -1,4 +1,4 @@
-use crate::{ast, ast::NodeId};
+use crate::ast;
 use term_common as common;
 use term_core as core;
 
@@ -16,10 +16,7 @@ use ustr::{Ustr, UstrMap, UstrSet};
 #[derive(Debug)]
 pub struct Context<'a> {
     pub ctx: &'a mut core::Context,
-
     pub decls: BTreeMap<DeclId, Rc<RefCell<VarDecl>>>,
-    pub exprs: BTreeMap<NodeId, Rc<RefCell<Expr>>>,
-    pub tys: BTreeMap<NodeId, Rc<RefCell<Ty>>>,
 
     pub ambiguous_names: UstrSet,
     pub con_var_ids: BTreeMap<DataConId, VarId>,
@@ -27,18 +24,13 @@ pub struct Context<'a> {
     pub op_var_ids: BTreeMap<EffectOpId, VarId>,
     pub handler_var_ids: BTreeMap<HandlerId, VarId>,
     pub var_decl_ids: BTreeMap<VarId, DeclId>,
-
-    next_node_id: NodeId,
 }
 
 impl<'a> Context<'a> {
     pub fn new(ctx: &'a mut core::Context) -> Self {
         Self {
             ctx,
-
             decls: BTreeMap::default(),
-            exprs: BTreeMap::default(),
-            tys: BTreeMap::default(),
 
             ambiguous_names: UstrSet::default(),
             con_var_ids: BTreeMap::default(),
@@ -46,15 +38,7 @@ impl<'a> Context<'a> {
             op_var_ids: BTreeMap::default(),
             handler_var_ids: BTreeMap::default(),
             var_decl_ids: BTreeMap::default(),
-
-            next_node_id: NodeId::new(0),
         }
-    }
-
-    pub fn next_node_id(&mut self) -> NodeId {
-        let id = self.next_node_id;
-        self.next_node_id = NodeId::new(id.raw + 1);
-        id
     }
 }
 

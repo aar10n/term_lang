@@ -115,7 +115,6 @@ impl Lower for ast::Ty {
                 cs.extend(cs1);
                 TyE::new(t, f, cs)
             }
-            TyKind::Ref(id) => todo!(),
         };
         Ok(cannonical_ty(ctx, t))
     }
@@ -546,7 +545,6 @@ impl Lower for ast::Expr {
                 Some(id) => panic!("unexpected id: {:?}", id),
                 None => Ok(Expr::Sym(n.raw)),
             }?,
-            ExprKind::Ref(id) => todo!(),
         };
         Ok(Expr::Span(self.span, e.into()))
     }

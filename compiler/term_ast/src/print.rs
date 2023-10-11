@@ -188,7 +188,6 @@ impl<'a> PrettyPrint<Context<'a>> for TyKind {
                     _ => ty.pretty_print(out, ctx, 0),
                 }
             }
-            TyKind::Ref(id) => todo!(),
         }
     }
 }
@@ -679,7 +678,6 @@ impl<'a> PrettyPrint<Context<'a>> for ExprKind {
             ExprKind::Ident(name) => {
                 writeln!(out, "{tab}{TAG}Ident{RESET} {}", name.pretty_string(ctx))?;
             }
-            ExprKind::Ref(id) => ctx.exprs[id].borrow().pretty_print(out, ctx, level)?,
         }
         Ok(())
     }
