@@ -119,7 +119,6 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
         match self {
             Ty::Infer => write!(out, "{PUNCT}?{RESET}"),
             Ty::Never => write!(out, "{BLUE}never{RESET}"),
-            Ty::Cont => write!(out, "{BLUE}cont{RESET}"),
             Ty::Unit => write!(out, "{LPARN}{RPARN}"),
             Ty::Symbol(s) => write!(out, "{BLUE}{}{RESET}", s.as_str()),
             Ty::Mono(id) => write!(out, "{GREEN}{}{RESET}", id),

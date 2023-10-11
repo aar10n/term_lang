@@ -1,3 +1,7 @@
+panic : a -> never
+println : String -> () ~ IO
+
+
 data List : a =
     | Nil
     | Cons a (List'a)
@@ -15,13 +19,7 @@ effect IO
 data IOError = IOError { msg : String };
 
 
-panic : a -> never
-println : String -> () ~ IO
-
-
 test () = handle (raise 1)
-    | Except'Int ~> { raise = k _ => k () }
+    | Except'Int ~> { raise = _ => () }
     | () ~> println "ok"
     ;
-
-

@@ -164,8 +164,6 @@ pub enum Ty {
     Infer,
     /// The never type.
     Never,
-    /// The continue type.
-    Cont,
     /// The unit type.
     Unit,
     /// Symbolic constant.
@@ -188,7 +186,7 @@ pub enum Ty {
 
 impl Ty {
     pub fn is_const(&self) -> bool {
-        matches!(self, Self::Unit | Self::Cont | Self::Symbol(_))
+        matches!(self, Self::Unit | Self::Symbol(_))
     }
 
     pub fn is_concrete(&self) -> bool {

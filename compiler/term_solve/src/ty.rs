@@ -22,7 +22,6 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
     Ok(match (t1, t2) {
         (Infer, t) | (t, Infer) => t,
         (Never, Never) => Never,
-        (Cont, Cont) => Cont,
         (Unit, Unit) => Unit,
         (Symbol(x), Symbol(y)) if x == y => Symbol(x),
         (t, Mono(x)) | (Mono(x), t) => {

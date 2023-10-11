@@ -203,18 +203,7 @@ impl Lower for ast::EffectDecl {
         let handler_ty = {
             let mut rec = BTreeMap::new();
             for (name, op) in self.ops.iter().map(|x| x.name.raw).zip(ops.iter()) {
-                // the handler function for an effect operation with the type
-                //     a -> b
-                // will receive as its first argument a "continuation function"
-                // which is a function type taking a single parameter `b` and
-                // returning the special `cont` (continue) type.
-                //     b -> cont
-                let ret_t = op.ty.return_ty().unwrap().clone();
-                let cont_t = TyE::pure_func(ret_t, TyE::pure(Ty::Cont));
-                let (op_t, op_f, op_cs) = op.ty.clone().into_tuple();
-
-                let ty = TyE::new(Ty::Func(cont_t.into(), TyE::pure(op_t).into()), op_f, op_cs);
-                rec.insert(name, cannonical_ty(ctx, ty));
+                rec.insert(name, cannonical_ty(ctx, op.ty.clone()));
             }
             TyE::pure(Ty::Record(rec))
         };
