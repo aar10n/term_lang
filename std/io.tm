@@ -1,5 +1,7 @@
 panic : a -> never
 println : String -> () ~ IO
+builtin_put_char : Char -> ()
+builtin_get_char : () -> Char
 
 
 data List : a =
@@ -19,8 +21,24 @@ effect IO
 data IOError = IOError { msg : String };
 
 
-test () = do
-    | raise 1
+handler stdio for IO
+    | read_char = builtin_put_char
+    | write_char = builtin_get_char
+    ;
+
+
+test () = ~do
     | println "hi"
-    | ['a']
+    | 1
+    ;
+
+# -----------
+
+test () k = do
+    | handle (println "hi")
+        | Except'IOError ~> 
+        | IO ~> 
+        | k 1
+        ;
+    |
     ;

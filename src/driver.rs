@@ -5,6 +5,7 @@ use term_core as core;
 use term_diag as diag;
 use term_parse as parse;
 use term_print as print;
+use term_rewrite_csp as rewrite;
 use term_solve as solve;
 
 use common::source::{SourceFile, SourceId, SourceMap};
@@ -42,7 +43,7 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         return Err(Report::from(errs));
     }
 
-    // ctx.print_stdout(&());
+    ctx.print_stdout(&());
     println!("{GREEN}Done{RESET}");
     Ok(())
 }
