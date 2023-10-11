@@ -49,7 +49,7 @@ fn main() {
         let source_id = ctx.sources.add(file, src);
         if let Err(report) = driver::evaluate(&mut ctx, source_id, false) {
             report.print_stderr(&ctx.sources);
-            ctx.print_stdout(&());
+            // ctx.print_stdout(&());
             process::exit(1);
         }
     }

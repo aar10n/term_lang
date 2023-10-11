@@ -65,15 +65,18 @@ pub fn generalize(
     }
 }
 
-pub fn simplify(c: Constraint) -> Constraint {
+pub fn cannonicalize(ctx: &mut Context<'_>, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
-        Eq(box t1, box t2) => Eq(crate::simplify(t1).into(), crate::simplify(t2).into()),
+        Eq(box t1, box t2) => Eq(
+            crate::cannonicalize(ctx, t1).into(),
+            crate::cannonicalize(ctx, t2).into(),
+        ),
         Class(id, ts) => Class(
             id,
             ts.into_iter()
-                .map(|t| crate::simplify(t))
+                .map(|t| crate::cannonicalize(ctx, t))
                 .collect::<Vec<_>>(),
         ),
     }
@@ -136,10 +139,12 @@ pub mod cs {
             .collect()
     }
 
-    pub fn simplify(mut cs: Vec<Constraint>) -> Vec<Constraint> {
+    pub fn cannonicalize(ctx: &mut Context<'_>, mut cs: Vec<Constraint>) -> Vec<Constraint> {
         cs.sort();
         cs.dedup();
-        cs.into_iter().map(|c| super::simplify(c)).collect()
+        cs.into_iter()
+            .map(|c| super::cannonicalize(ctx, c))
+            .collect()
     }
 
     pub fn subst_ty(r: &Ty, x: &Ty, cs: Vec<Constraint>) -> Vec<Constraint> {

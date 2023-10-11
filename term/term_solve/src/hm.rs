@@ -9,16 +9,19 @@ use type_env::TSet;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
+pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<TyE> {
     use self::Bind::*;
     use self::Expr::*;
     use self::Lit::*;
-    Ok(match e {
+
+    let tab = "  ".repeat(level);
+    let result = match e {
         Type(box t) => t,
-        Wildcard => TyE::pure(Ty::Infer),
+
         Lit(l) => TyE::pure(l.as_ty()),
         Sym(s) => todo!(),
         Var(id) => {
+            debug_println!("{tab}[var] solving: {}", id.pretty_string(ctx));
             let (e, t) = if let Some(d) = ctx.defs.get(&id) {
                 (d.body.clone(), d.ty.clone())
             } else {
@@ -40,65 +43,90 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             };
 
             let t = crate::instantiate(ctx, t, &mut HashMap::new());
-            if matches!(e, Expr::Var(_)) || t.is_concrete() {
+            if e == Var(id) || t.is_concrete() {
+                debug_println!(
+                    "{tab}[var] done: {} : {}",
+                    id.pretty_string(ctx),
+                    t.pretty_string(ctx)
+                );
                 return Ok(t);
             }
 
-            let u = algorithmj(ctx, e)?;
+            let u = algorithmj(ctx, e, level + 1)?;
             let result = crate::unify(ctx, t, u)?;
             debug_println!(
-                "[var] {} : {}",
+                "{tab}[var] done: {} : {}",
                 id.pretty_string(ctx),
                 result.pretty_string(ctx)
             );
             result
         }
-        Apply(box e1, box e2) => {
-            let t1 = algorithmj(ctx, e1.clone())?;
-            let t2 = algorithmj(ctx, e2.clone())?;
+        Record(fields) => {
+            let mut rec = BTreeMap::new();
+            for (n, e) in fields {
+                debug_println!("{tab}[rec] solving: {} = {}", n, e.pretty_string(ctx));
+                let t = algorithmj(ctx, e, level + 1)?;
+                debug_println!("{tab}[rec] done: {}", t.pretty_string(ctx));
+                rec.insert(n, t);
+            }
+            TyE::pure(Ty::Record(rec))
+        }
 
-            let f = ctx.new_ef_var();
-            let result = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
-            let rt = crate::unify(
+        Apply(box e1, box e2) => {
+            debug_println!(
+                "{tab}[app] solving: ({} {})",
+                e1.pretty_string(ctx),
+                e2.pretty_string(ctx)
+            );
+
+            let (t1, f1) = algorithmj(ctx, e1, level + 1)?.split_ef();
+            let (t2, f2) = algorithmj(ctx, e2, level + 1)?.split_ef();
+
+            let v = ctx.new_ty_var();
+            crate::unify(
                 ctx,
                 t1.clone(),
-                TyE::new(
-                    Ty::Func(t2.clone().into(), result.clone().into()),
-                    f,
-                    vec![],
-                ),
+                TyE::pure_func(t2.clone(), TyE::pure(v.clone())),
             )?;
 
-            let result = crate::update(ctx, result);
+            let result = crate::update(ctx, TyE::pure(v).with_ef(f1 | f2));
             debug_println!(
-                "[app] ({} : {} | {} : {}) -> {}",
-                e1.pretty_string(ctx),
+                "{tab}[app] done: {} | {} -> {}",
                 t1.pretty_string(ctx),
-                e2.pretty_string(ctx),
                 t2.pretty_string(ctx),
-                rt.pretty_string(ctx),
+                result.pretty_string(ctx),
             );
             result
         }
         Lambda(x, box e) => {
+            debug_println!(
+                "{tab}[lam] solving: λ{}.{}",
+                x.pretty_string(ctx),
+                e.pretty_string(ctx)
+            );
+            let v = ctx.new_ty_var();
             let f = ctx.new_ef_var();
-            let t = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
+            let t = TyE::simple(v.clone(), f.clone());
 
             ctx.push_typing(Expr::Var(x), t.clone());
-            let rt = algorithmj(ctx, e.clone())?;
+            let (ret_t, ret_f, ret_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
             ctx.pop_typings();
 
-            let pt = crate::update(ctx, t);
-            let result = TyE::new(Ty::Func(pt.clone().into(), rt.clone().into()), f, vec![]);
-            debug_println!(
-                "[lam] (λ{} : {}) -> {}",
-                x.pretty_string(ctx),
-                pt.pretty_string(ctx),
-                rt.pretty_string(ctx),
+            let pt = crate::ty::update(ctx, v);
+            let result = TyE::new(
+                Ty::Func(TyE::pure(pt).into(), TyE::pure(ret_t).into()),
+                f | ret_f,
+                ret_cs,
             );
+            debug_println!("{tab}[lam] done: {}", result.pretty_string(ctx),);
             result
         }
         Let(Rec(x, box e), e1) => {
+            debug_println!(
+                "{tab}[letr] solving: let rec {} = {}",
+                x,
+                e.pretty_string(ctx)
+            );
             let f = ctx.new_ef_var();
             let t = TyE::new(ctx.new_ty_var(), f.clone(), vec![]);
 
@@ -108,7 +136,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
                 vec![],
             );
             ctx.push_typing(Expr::Var(x), ft);
-            let u = algorithmj(ctx, e.clone())?;
+            let u = algorithmj(ctx, e.clone(), level + 1)?;
             ctx.pop_typings();
 
             let t = crate::unify(ctx, t, u)?;
@@ -120,47 +148,49 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             let mut result = t.clone();
             if let Some(box e1) = e1 {
                 ctx.push_typing(Expr::Var(x), ft);
-                result = algorithmj(ctx, e1.clone())?;
+                result = algorithmj(ctx, e1.clone(), level + 1)?;
                 ctx.pop_typings();
             }
 
             debug_println!(
-                "[let] {} : {} | {} : {}",
-                x.pretty_string(ctx),
-                t.pretty_string(ctx),
-                e.pretty_string(ctx),
+                "{tab}[letr] done: {} | t: {}",
                 result.pretty_string(ctx),
+                t.pretty_string(ctx),
             );
             result
         }
         Let(NonRec(box p, box e), e1) => {
-            let t = algorithmj(ctx, e.clone())?;
+            debug_println!(
+                "{tab}[let] solving: let {} = {}",
+                p.pretty_string(ctx),
+                e.pretty_string(ctx)
+            );
+
+            let t = algorithmj(ctx, e.clone(), level + 1)?;
             let vars = unify_pat(ctx, p.clone(), t.clone())?;
 
             let mut result = t.clone();
             if let Some(box e1) = e1 {
                 ctx.push_typings(vars);
-                result = algorithmj(ctx, e1.clone())?;
+                result = algorithmj(ctx, e1.clone(), level + 1)?;
                 ctx.pop_typings();
             }
 
             debug_println!(
-                "[let] {} : {} | {} : {}",
-                p.pretty_string(ctx),
-                t.pretty_string(ctx),
-                e.pretty_string(ctx),
+                "{tab}[let] done: {} | t: {}",
                 result.pretty_string(ctx),
+                t.pretty_string(ctx),
             );
             result
         }
         Case(box e, alts) => {
-            let case_t = algorithmj(ctx, e.clone())?;
+            let case_t = algorithmj(ctx, e.clone(), level + 1)?;
             let mut res_t = Ty::Infer;
             let mut res_f = Ef::Infer;
             for (p, e) in alts {
                 let vars = unify_pat(ctx, p.clone(), case_t.clone())?;
                 ctx.push_typings(vars);
-                let (e_t, e_f, _) = algorithmj(ctx, e.clone())?.into_tuple();
+                let (e_t, e_f, _) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
                 ctx.pop_typings();
 
                 res_t = ty::unify(ctx, res_t, e_t)?;
@@ -169,25 +199,88 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr) -> diag::Result<TyE> {
             TyE::new(res_t, res_f, vec![])
         }
         Handle(box e, alts) => {
-            let expr_t = algorithmj(ctx, e.clone())?;
-            let mut res_t = Ty::Infer;
-            let mut res_f = Ef::Infer;
-            for (f, e) in alts {
-                let (e_t, e_f, _) = algorithmj(ctx, e.clone())?.into_tuple();
-                ctx.pop_typings();
+            debug_println!(
+                "{tab}[han] solving: handle {} with \n\t{}",
+                e.pretty_string(ctx),
+                alts.iter()
+                    .map(|(f, e)| format!("{} ~> {}", f.pretty_string(ctx), e.pretty_string(ctx)))
+                    .collect::<Vec<_>>()
+                    .join("\n\t")
+            );
+            // handle expressions permit the binding handlers to effects.
+            let (expr_t, expr_f, expr_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
 
-                res_t = ty::unify(ctx, res_t, e_t)?;
-                res_f = res_f | e_f;
+            let mut fs = expr_f.into_hashset();
+            let mut res_t = None;
+            for (f, e) in alts {
+                debug_println!(
+                    "{tab}[han] solving: {} ~> {}",
+                    f.pretty_string(ctx),
+                    e.pretty_string(ctx),
+                );
+
+                let t = algorithmj(ctx, e.clone(), level + 1)?;
+                if f.is_pure() {
+                    res_t = Some(t);
+                    continue;
+                }
+
+                let ht = solve_handler_ty(ctx, &f)?;
+                let t = crate::unify(ctx, t, ht)?;
+
+                debug_println!(
+                    "{tab}[han] done: {} ~> {}",
+                    f.pretty_string(ctx),
+                    t.pretty_string(ctx),
+                );
+
+                // remove handled effects from the set
+                for f in f.clone().into_hashset() {
+                    fs.remove(&f);
+                }
             }
-            TyE::new(res_t, res_f, vec![])
+
+            let res_f = Ef::from(fs);
+            let result = if let Some(t) = res_t {
+                t.with_ef(res_f).with_cs(expr_cs)
+            } else {
+                TyE::new(Ty::Unit, res_f, expr_cs)
+            };
+
+            debug_println!(
+                "{tab}[han] done: {} | t: {}",
+                result.pretty_string(ctx),
+                expr_t.pretty_string(ctx),
+            );
+            result
         }
         Do(_) => todo!(),
 
         Span(s, box e) => {
             ctx.spans.push(s);
-            let t = algorithmj(ctx, e)?;
+            let t = algorithmj(ctx, e, level + 1)?;
             ctx.spans.pop();
             t
+        }
+    };
+    Ok(result)
+}
+
+pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
+    use Ef::*;
+    Ok(match f {
+        Infer | Pure | Mono(_) | Poly(_) => {
+            return format!("expected effect, found `{}`", f.pretty_string(ctx)).into_err()
+        }
+        Effect(ef_id, ts) => {
+            let effect = ctx.effects.get(ef_id).unwrap();
+            let mut t = crate::instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
+            t
+        }
+        Union(fs) => {
+            // TODO: lower all effects and create a handler super-type by
+            // combining all the records into one.
+            format!("invalid effect pattern: `{}`", f.pretty_string(ctx)).into_err()?
         }
     })
 }
@@ -199,13 +292,12 @@ pub fn unify_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<Vec<(Ex
     let (t, f, cs) = t.into_tuple();
     let cs = crate::solve_constraints(ctx, cs)?;
     Ok(match (p, t) {
-        (Wildcard, _) => vec![],
         (Lit(l), t) => {
             ty::unify(ctx, t, l.as_ty())?;
             vec![]
         }
-        (Var(x), t) => vec![(Var(x), TyE::pure(t))],
-        (Span(_, box e), t) => unify_pat(ctx, e, TyE::pure(t))?,
+        (Var(x), t) => vec![(Var(x), TyE::new(t, f, cs))],
+        (Span(_, box e), t) => unify_pat(ctx, e, TyE::new(t, f, cs))?,
         (p, t) => {
             // ctx.ty_set.print_stdout(ctx);
             // println!("-----");

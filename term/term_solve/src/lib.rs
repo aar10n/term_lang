@@ -17,6 +17,7 @@ use term_diag as diag;
 use constraint::cs;
 use core::{Constraint, Ef, Expr, MonoVarId, PolyVarId, Ty, TyE};
 use diag::{Diagnostic, IntoDiagnostic};
+use term_print::PrettyString;
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -30,7 +31,7 @@ pub(crate) use debug_println;
 /// Solves a type equation.
 pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
     let mut ctx = Context::new(ctx);
-    let u = match hm::algorithmj(&mut ctx, e.clone()) {
+    let u = match hm::algorithmj(&mut ctx, e.clone(), 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
             e.with_span(s)
@@ -45,7 +46,7 @@ pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
 /// Infers the most general type of an expression.
 pub fn infer(ctx: &mut core::Context, e: &Expr) -> diag::Result<TyE> {
     let mut ctx = Context::new(ctx);
-    let result = match hm::algorithmj(&mut ctx, e.clone()) {
+    let result = match hm::algorithmj(&mut ctx, e.clone(), 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
             e.with_span(s)
@@ -53,8 +54,8 @@ pub fn infer(ctx: &mut core::Context, e: &Expr) -> diag::Result<TyE> {
             e
         }),
     }?;
-    let result = generalize(&mut ctx, result, &mut Default::default());
-    Ok(update(&mut ctx, result))
+    let t = generalize(&mut ctx, result, &mut Default::default());
+    Ok(t)
 }
 
 /// Checks that a set of type parameters are valid.
@@ -101,6 +102,16 @@ pub fn solve_constraints(
 }
 
 pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
+    let t1 = cannonicalize(ctx, t1);
+    let t2 = cannonicalize(ctx, t2);
+    if t1 != t2 {
+        // debug_println!(
+        //     "unify: {} = {}",
+        //     t1.pretty_string(ctx),
+        //     t2.pretty_string(ctx)
+        // );
+    }
+
     let (t1, f1, mut cs) = t1.into_tuple();
     let (t2, f2, cs2) = t2.into_tuple();
     cs.extend(cs2);
@@ -138,13 +149,13 @@ pub fn generalize(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<MonoVarId, Pol
     TyE::new(t, f, cs)
 }
 
-pub fn simplify(t: TyE) -> TyE {
+pub fn cannonicalize(ctx: &mut Context<'_>, t: TyE) -> TyE {
     let (t, f, mut cs) = t.into_tuple();
-    let (t, f2, cs2) = ty::simplify(t).into_tuple();
+    let (t, f2, cs2) = ty::cannonicalize(ctx, t).into_tuple();
     cs.extend(cs2);
 
-    let f = ef::simplify(f | f2);
-    let cs = constraint::cs::simplify(cs);
+    let f = ef::cannonicalize(ctx, f | f2);
+    let cs = cs::cannonicalize(ctx, cs);
     TyE::new(t, f, cs)
 }
 

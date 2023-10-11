@@ -7,9 +7,9 @@ use term_print as print;
 use term_solve as solve;
 
 use ast::Spanned;
-use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, VarId};
+use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
-use print::PrettyPrint;
+use print::{PrettyPrint, PrettyString};
 
 use std::collections::BTreeMap;
 use std::vec;
@@ -117,7 +117,7 @@ impl Lower for ast::Ty {
             }
             TyKind::Ref(id) => todo!(),
         };
-        Ok(solve::simplify(t))
+        Ok(cannonical_ty(ctx, t))
     }
 }
 
@@ -141,20 +141,37 @@ impl Lower for ast::Ef {
 }
 
 impl Lower for ast::DataDecl {
-    type Target = core::Data;
+    type Target = (core::Data, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Data, Def, Ty, TyE};
         let id = self.name.id.unwrap().data_id();
         let span = ctx.id_as_span(id).unwrap();
         let (params, constraints) = self.ty_params.lower(ctx)?;
         let cons = self.cons.lower(ctx)?;
 
-        Ok(core::Data {
+        let param_tys = ids_to_tys(params.clone());
+        let data_ty = TyE::pure(Ty::Data(id, param_tys.clone()));
+
+        // create the constructor built-in function definitions
+        let mut defs = vec![];
+        for con in &cons {
+            let id = con.var_id;
+            let ty = if con.fields.is_empty() {
+                data_ty.clone()
+            } else {
+                make_ty_func(ctx, con.fields.iter().cloned(), data_ty.clone())
+            };
+            defs.push(Def::new_builtin(id, cannonical_ty(ctx, ty)));
+        }
+
+        let data = Data {
             id,
             params,
             constraints,
             cons,
-        })
+        };
+        Ok((data, defs))
     }
 }
 
@@ -162,31 +179,69 @@ impl Lower for ast::DataConDecl {
     type Target = core::DataCon;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::DataCon;
         let id = unwrap_resolved_ident(&self.name)?.data_con_id();
         let var_id = ctx.con_var_ids[&id];
         ctx.register_id_name(var_id, self.name.raw, self.name.span());
 
         let fields = self.fields.lower(ctx)?;
-        Ok(core::DataCon { id, var_id, fields })
+        Ok(DataCon { id, var_id, fields })
     }
 }
 
 impl Lower for ast::EffectDecl {
-    type Target = core::Effect;
+    type Target = (core::Effect, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Def, Ef, Effect, Ty, TyE};
         let id = self.name.id.unwrap().effect_id();
         let (params, constraints) = self.ty_params.lower(ctx)?;
         let ops = self.ops.lower(ctx)?;
 
-        Ok(core::Effect {
+        let param_tys = ids_to_tys(params.clone());
+        let effect = Ef::Effect(id, param_tys.clone());
+
+        let handler_ty = {
+            let mut rec = BTreeMap::new();
+            for (name, op) in self.ops.iter().map(|x| x.name.raw).zip(ops.iter()) {
+                // the handler function for an effect operation with the type
+                //     a -> b
+                // will receive as its first argument a "continuation function"
+                // which is a function type taking a single parameter `b` and
+                // returning the special `cont` (continue) type.
+                //     b -> cont
+                let ret_t = op.ty.return_ty().unwrap().clone();
+                let cont_t = TyE::pure_func(ret_t, TyE::pure(Ty::Cont));
+                let (op_t, op_f, op_cs) = op.ty.clone().into_tuple();
+
+                let ty = TyE::new(Ty::Func(cont_t.into(), TyE::pure(op_t).into()), op_f, op_cs);
+                rec.insert(name, cannonical_ty(ctx, ty));
+            }
+            TyE::pure(Ty::Record(rec))
+        };
+
+        // create the op function definitions
+        let mut defs = vec![];
+        for op in &ops {
+            // an effect operation with the type `a -> b` corresponds to a global
+            // effectful function `a -> b ~ <effect>`.
+            let id = ctx.op_var_ids[&op.id];
+            let (op_t, op_f, op_cs) = op.ty.clone().into_tuple();
+
+            let ty = TyE::new(op_t, op_f | effect.clone(), op_cs);
+            defs.push(Def::new_builtin(id, ty));
+        }
+
+        let effect = Effect {
             id,
             params,
             constraints,
             ops,
+            handler_ty,
             handlers: vec![],
             default: None,
-        })
+        };
+        Ok((effect, defs))
     }
 }
 
@@ -228,7 +283,7 @@ impl Lower for ast::EffectOpImpl {
     type Target = (EffectOpId, core::Def);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Expr, Ty, TyE};
+        use core::{Def, Expr, Ty, TyE};
 
         let op_id = match self.op_id {
             Some(id) => id,
@@ -236,14 +291,19 @@ impl Lower for ast::EffectOpImpl {
         };
         let id = unwrap_resolved_ident(&self.name)?.var_id();
         let body = if self.params.is_empty() {
-            // variable
-            self.expr.lower(ctx)?
+            self.expr.lower(ctx)? // variable
         } else {
-            // function
-            lower_lambda(ctx, &self.params, &self.expr)?
+            lower_lambda(ctx, &self.params, &self.expr)? // function
         };
 
-        Ok((op_id, core::Def::new(id, TyE::infer(), body)))
+        let ty = TyE::pure(Ty::Infer);
+        // println!(
+        //     "inferring type of effect op body: {}",
+        //     body.pretty_string(ctx)
+        // );
+        // let ty = solve::infer(ctx.ctx, &body)?;
+        // println!("effect op type inferred to be: {}", ty.pretty_string(ctx));
+        Ok((op_id, Def::new(id, ty, body)))
     }
 }
 
@@ -251,11 +311,12 @@ impl Lower for ast::ClassDecl {
     type Target = core::Class;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Class;
         let id = self.name.id.unwrap().class_id();
         let (params, constraints) = self.ty_params.lower(ctx)?;
         let methods = self.members.lower(ctx)?;
 
-        Ok(core::Class {
+        Ok(Class {
             id,
             params,
             constraints,
@@ -282,9 +343,10 @@ impl Lower for ast::MethodDecl {
     type Target = core::Method;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Method;
         let id = unwrap_resolved_ident(&self.name)?.decl_id();
         let ty = self.ty.lower(ctx)?;
-        Ok(core::Method { id, ty })
+        Ok(Method { id, ty })
     }
 }
 
@@ -292,6 +354,7 @@ impl Lower for ast::ClassInst {
     type Target = core::Inst;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Inst;
         let class_id = self.class.id.unwrap().class_id();
         let id = self.id.unwrap();
         let (params, constraints) = self.ty_args.lower(ctx)?;
@@ -302,7 +365,7 @@ impl Lower for ast::ClassInst {
             ctx.defs.insert(def.id, def);
         }
 
-        Ok(core::Inst {
+        Ok(Inst {
             id,
             params,
             constraints,
@@ -327,26 +390,42 @@ impl Lower for ast::MethodImpl {
     type Target = core::Def;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Ty, TyE};
+        use core::{Bind, Def, Expr, Ty, TyE};
         let id = unwrap_resolved_ident(&self.name)?.var_id();
         Ok(if self.params.is_empty() {
             // variable
             let expr = self.expr.lower(ctx)?;
-            core::Def::new(id, TyE::infer(), expr)
+            Def::new(id, TyE::infer(), expr)
         } else {
             // function
             let mut expr = self.expr.lower(ctx)?;
             for p in self.params.lower(ctx)?.into_iter().rev() {
                 let v = ctx.ids.next_var_id();
-                let b = core::Bind::NonRec(p.into(), core::Expr::Var(v).into());
-                expr = core::Expr::Lambda(
-                    v,
-                    core::Expr::Let(b, Some(core::Expr::Var(v).into())).into(),
-                );
+                let b = Bind::NonRec(p.into(), Expr::Var(v).into());
+                expr = Expr::Lambda(v, Expr::Let(b, Some(Expr::Var(v).into())).into());
             }
 
-            core::Def::new(id, TyE::infer(), expr)
+            Def::new(id, TyE::infer(), expr)
         })
+    }
+}
+
+impl Lower for ast::VarDecl {
+    /// VarDecl is lowered to a Def only if it is a built-in type declaration.
+    type Target = Option<core::Def>;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::Def;
+        if !ctx.builtins.contains(&self.name.raw) {
+            return Ok(None);
+        }
+
+        // declaration is a builtin
+        let id = self.name.id.unwrap().decl_id();
+        let var_id = ctx.decl_var_ids[&id];
+        let name = self.name.raw;
+        let ty = self.ty.lower(ctx)?;
+        Ok(Some(Def::new_builtin(var_id, ty)))
     }
 }
 
@@ -454,7 +533,13 @@ impl Lower for ast::Expr {
                 }
                 expr
             }
-            ExprKind::Record(fs) => todo!(),
+            ExprKind::Record(fields) => {
+                let mut rec = BTreeMap::new();
+                for (n, e) in fields {
+                    rec.insert(n.raw, e.lower(ctx)?);
+                }
+                Expr::Record(rec)
+            }
             ExprKind::Lit(l) => l.lower(ctx)?,
             ExprKind::Ident(n) => match n.id {
                 Some(Id::Var(id)) => Ok(Expr::Var(id)),
@@ -544,7 +629,13 @@ impl Lower for ast::Pat {
         use core::{DataId, Expr, Id, Lit};
         let e = match &self.kind {
             PatKind::Unit => Expr::Lit(Lit::Unit),
-            PatKind::Wildcard => Expr::Wildcard,
+            PatKind::Wildcard => {
+                // ignored temporary variable
+                let v = ctx.ids.next_var_id();
+                let name = format!("w_{:06x}", self.span.hash());
+                ctx.register_id_name(v, ustr(&name), Span::default());
+                Expr::Var(v)
+            }
             PatKind::DataCon(n, ps) => {
                 let con_id = unwrap_resolved_ident(n)?.data_con_id();
                 let var_id = ctx.con_var_ids[&con_id];
@@ -602,12 +693,8 @@ impl Lower for ast::Lit {
         }
 
         match &self.kind {
-            LitKind::Unit => Ok(Expr::Lit(Lit::Unit)),
-            LitKind::Bool(b) => Ok(Expr::Lit(Lit::Bool(*b))),
-            LitKind::Int(i) => Ok(Expr::Lit(Lit::Int(*i))),
-            LitKind::Float(f) => Ok(Expr::Lit(Lit::Float(f.to_bits()))),
-            LitKind::Char(c) => Ok(Expr::Lit(Lit::Char(*c))),
             LitKind::String(s) => lower_string_lit(ctx, s),
+            k => Ok(Expr::Lit(lower_non_string_lit(ctx, k)?)),
         }
     }
 }
@@ -620,33 +707,53 @@ impl Lower for ast::Ident {
     }
 }
 
+pub fn make_ty_func(
+    ctx: &mut Context,
+    params: impl IntoIterator<Item = core::TyE>,
+    ret_t: core::TyE,
+) -> core::TyE {
+    use ast::TyKind;
+    use core::{Ty, TyE};
+    let params = params.into_iter().collect::<Vec<_>>();
+    if params.is_empty() {
+        TyE::pure_func(TyE::pure(Ty::Unit), ret_t)
+    } else {
+        let mut t = ret_t;
+        for p in params.into_iter().rev() {
+            t = Ty::Func(p.into(), t.into()).into();
+        }
+        t
+    }
+}
+
 pub fn lower_lambda(
     ctx: &mut Context,
     params: &[Box<ast::Pat>],
     body: &ast::Expr,
 ) -> diag::Result<core::Expr> {
     use ast::PatKind;
+    use core::{Bind, Expr};
     let mut expr = body.lower(ctx)?;
     for (i, p) in params.iter().enumerate().rev() {
         if let PatKind::Ident(n) = &p.kind {
             let v = n.id.unwrap().var_id();
-            expr = core::Expr::Lambda(v, expr.into());
+            expr = Expr::Lambda(v, expr.into());
         } else {
             let v = ctx.ids.next_var_id();
-            let name = format!("v{}", i);
+            let name = format!("v_{}", i);
             ctx.register_id_name(v, ustr(&name), Span::default());
 
-            let b = core::Bind::NonRec(p.lower(ctx)?.into(), core::Expr::Var(v).into());
-            expr = core::Expr::Lambda(v, core::Expr::Let(b, Some(expr.into())).into());
+            let b = Bind::NonRec(p.lower(ctx)?.into(), Expr::Var(v).into());
+            expr = Expr::Lambda(v, Expr::Let(b, Some(expr.into())).into());
         };
     }
     Ok(expr)
 }
 
-pub fn lower_non_string_lit(ctx: &mut Context, lit: &ast::Lit) -> diag::Result<core::Lit> {
+pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Result<core::Lit> {
     use ast::LitKind;
     use core::Lit;
-    match &lit.kind {
+    match &kind {
         LitKind::Unit => Ok(Lit::Unit),
         LitKind::Bool(b) => Ok(Lit::Bool(*b)),
         LitKind::Int(i) => Ok(Lit::Int(*i)),
@@ -667,12 +774,15 @@ pub fn lower_string_lit(ctx: &mut Context, s: impl AsRef<str>) -> diag::Result<c
         let e = Expr::Apply(Expr::Var(cons_id).into(), c.into());
         expr = Expr::Apply(e.into(), expr.into());
     }
-
     Ok(expr)
 }
 
 //
 //
+
+pub fn cannonical_ty(ctx: &mut Context<'_>, t: TyE) -> TyE {
+    solve::cannonicalize(&mut ctx.ctx.into(), t)
+}
 
 fn primitive(t: &str) -> core::Ty {
     core::Ty::Symbol(ustr(t))
@@ -708,6 +818,16 @@ fn expect_id_defined<T: Into<Id>>(
         )
         .into_diagnostic(),
     )
+}
+
+fn ids_to_tys<T: Into<Id>>(ids: impl IntoIterator<Item = T>) -> Vec<core::TyE> {
+    ids.into_iter()
+        .map(|id| match Id::from(id.into()) {
+            Id::MonoVar(x) => core::Ty::Mono(x).into(),
+            Id::PolyVar(x) => core::Ty::Poly(x).into(),
+            id @ _ => panic!("invalid id type: {:?}", id),
+        })
+        .collect()
 }
 
 fn unwrap_resolved_ident(ident: &ast::Ident) -> diag::Result<core::Id> {

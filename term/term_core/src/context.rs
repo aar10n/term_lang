@@ -115,7 +115,6 @@ impl Context {
         }
 
         self.id_names.insert(id.into(), (name, span));
-        println!("registering global name {} : {:?}", name, id.into());
         self.global_names.insert(name, id.into());
         Ok(())
     }
@@ -131,7 +130,6 @@ impl Context {
         }
 
         self.id_names.insert(id.into(), (name, span));
-        println!("registering global type {} : {:?}", name, id.into());
         self.global_types.insert(name, id.into());
         Ok(())
     }

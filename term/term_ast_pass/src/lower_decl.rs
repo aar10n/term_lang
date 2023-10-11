@@ -24,6 +24,17 @@ impl<'v, 'ast> LowerDeclVisitor<'v, 'ast> {
     pub fn new(ctx: &'v mut Context<'ast>) -> Self {
         Self { ctx }
     }
+
+    pub fn register_defs(&mut self, defs: Vec<core::Def>) {
+        for def in defs {
+            println!(
+                "registering built-in {} : {}",
+                def.id.pretty_string(self.ctx),
+                def.ty.pretty_string(self.ctx)
+            );
+            self.ctx.defs.insert(def.id, def);
+        }
+    }
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
@@ -32,60 +43,20 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
     }
 
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
-        use core::Ty;
-        let data = data.lower(&mut self.ctx)?;
+        let (data, defs) = data.lower(&mut self.ctx)?;
         solve::check_valid_type_params(&mut self.ctx, &data.params, &data.constraints)?;
 
-        // register constructor function types
-        for con in data.cons.iter() {
-            let mut ty = Ty::Data(
-                data.id,
-                data.params
-                    .iter()
-                    .map(|p| TyE::pure(Ty::Poly(*p)))
-                    .collect(),
-            );
-            for field in con.fields.iter().rev() {
-                ty = Ty::Func(TyE::pure(field.ty.clone()).into(), TyE::pure(ty).into());
-            }
-
-            println!(
-                "registering constructor {} : {}",
-                self.ctx.id_as_str(con.var_id),
-                ty.pretty_string(self.ctx)
-            );
-            let def = core::Def::new_builtin(con.var_id, TyE::pure(ty));
-            self.ctx.defs.insert(con.var_id, def);
-        }
-
         self.ctx.datas.insert(data.id, data);
+        self.register_defs(defs);
         Ok(())
     }
 
     fn visit_effect_decl(&mut self, effect_decl: &mut EffectDecl) -> diag::Result<()> {
-        let effect = effect_decl.lower(&mut self.ctx)?;
+        let (effect, defs) = effect_decl.lower(&mut self.ctx)?;
         solve::check_valid_type_params(&mut self.ctx, &effect.params, &effect.constraints)?;
+
         self.ctx.effects.insert(effect.id, effect);
-        effect_decl.walk(self)
-    }
-
-    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> diag::Result<()> {
-        let op_id = op.name.id.unwrap().effect_op_id();
-        let var_id = self.ctx.op_var_ids[&op_id];
-        let effect = &self.ctx.effects[&op_id.parent];
-        let ps = effect
-            .params
-            .iter()
-            .map(|id| TyE::pure(core::Ty::Poly(*id)))
-            .collect::<Vec<_>>();
-
-        let ty = op
-            .ty
-            .lower(self.ctx)?
-            .with_effect(Ef::Effect(op_id.parent, ps));
-
-        let def = core::Def::new_builtin(var_id, ty);
-        self.ctx.defs.insert(var_id, def);
+        self.register_defs(defs);
         Ok(())
     }
 
@@ -108,23 +79,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
-        if !self.ctx.builtins.contains(&var.name.raw) {
-            return Ok(());
+        if let Some(builtin) = var.lower(&mut self.ctx)? {
+            self.register_defs(vec![builtin]);
         }
-
-        let id = var.name.id.unwrap().decl_id();
-        let var_id = self.ctx.decl_var_ids[&id];
-        let name = var.name.raw;
-        let ty = var.ty.lower(self.ctx)?;
-
-        println!(
-            "registering built-in {} : {}",
-            var.name.pretty_string(self.ctx),
-            var.ty.pretty_string(self.ctx)
-        );
-
-        let def = core::Def::new_builtin(var_id, ty);
-        self.ctx.defs.insert(var_id, def);
         Ok(())
     }
 }

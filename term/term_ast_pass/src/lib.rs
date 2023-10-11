@@ -74,8 +74,8 @@ pub enum PassResult {
     Err(Vec<Diagnostic>),
 }
 
-/// Performs a full pass on the given module.
-pub fn full_pass<'a>(
+/// Applies the pass function to the given module.
+pub fn apply<'a>(
     ctx: &'a mut Context,
     module: &'a mut Module,
     mut f: impl PassFn,

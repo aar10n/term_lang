@@ -1,15 +1,23 @@
-use crate::Context;
+use crate::{debug_println, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
 use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE};
-use diag::IntoDiagnostic;
+use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
 use std::collections::HashMap;
 
 pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
+    if f1 != f2 {
+        // debug_println!(
+        //     "unify_ef: {} = {}",
+        //     f1.pretty_string(ctx),
+        //     f2.pretty_string(ctx)
+        // );
+    }
+
     use Ef::*;
     Ok(match (f1, f2) {
         (Pure, Pure) => Pure,
@@ -57,13 +65,19 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
                 .collect::<Result<Vec<_>, _>>()?;
             Union(fs)
         }
+        (Poly(_), _) | (_, Poly(_)) => panic!("unexpected poly_var in effect"),
         (f1, f2) => {
+            ctx.ty_set.print_stdout(ctx);
+            println!("--");
+            ctx.ef_set.print_stdout(ctx);
+            println!("-----");
+            panic!();
             return Err(format!(
                 "expected effect `{}`, found `{}`",
                 f1.pretty_string(ctx),
                 f2.pretty_string(ctx)
             )
-            .into_diagnostic())
+            .into_diagnostic());
         }
     })
 }
@@ -110,17 +124,18 @@ pub fn instantiate(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<PolyVarId, Mon
 pub fn generalize(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<MonoVarId, PolyVarId>) -> Ef {
     use Ef::*;
     match f {
-        Mono(id) => match ps.get(&id) {
-            Some(&id) => Poly(id),
-            Some(_) => panic!("invalid mono var"),
-            None => {
-                let t = ctx.ids.next_poly_var_id();
-                ps.insert(id, t);
-                let f = Ef::Poly(t);
-                ctx.ef_set.insert(f.clone());
-                f
-            }
-        },
+        Mono(_) => Pure,
+        // Mono(id) => match ps.get(&id) {
+        //     Some(&id) => Poly(id),
+        //     Some(_) => panic!("invalid mono var"),
+        //     None => {
+        //         let t = ctx.ids.next_poly_var_id();
+        //         ps.insert(id, t);
+        //         let f = Ef::Poly(t);
+        //         ctx.ef_set.insert(f.clone());
+        //         f
+        //     }
+        // },
         Effect(id, ts) => {
             let ts = ts
                 .into_iter()
@@ -133,20 +148,33 @@ pub fn generalize(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<MonoVarId, Poly
     }
 }
 
-pub fn simplify(f: Ef) -> Ef {
+pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
     use Ef::*;
     match f {
         Effect(id, ts) => {
-            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
+            let ts = ts
+                .into_iter()
+                .map(|t| crate::cannonicalize(ctx, t))
+                .collect();
             Effect(id, ts)
         }
         Union(mut fs) => {
-            fs.sort();
-            fs.dedup();
+            if fs.iter().all(|f| matches!(f, Mono(_))) {
+                let mut f = fs.first().unwrap().clone();
+                for f2 in fs.into_iter().skip(1) {
+                    f = ctx.ef_set.union(f, f2);
+                }
+                return f;
+            }
+
             if fs.len() == 1 {
-                simplify(fs.pop().unwrap())
+                cannonicalize(ctx, fs.pop().unwrap())
             } else {
-                Ef::Union(fs.into_iter().map(|f| simplify(f).into()).collect())
+                Ef::Union(
+                    fs.into_iter()
+                        .map(|f| cannonicalize(ctx, f).into())
+                        .collect(),
+                )
             }
         }
         f => f,

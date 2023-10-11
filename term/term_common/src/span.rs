@@ -36,6 +36,14 @@ impl Span {
             end: self.end,
         }
     }
+
+    pub fn hash(&self) -> u64 {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        Hash::hash(&self, &mut hasher);
+        hasher.finish()
+    }
 }
 
 impl Default for Span {

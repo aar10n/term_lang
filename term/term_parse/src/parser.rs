@@ -243,7 +243,7 @@ peg::parser! {
             span(<f:ef() _ "~>" _ e:expr() { HandleAlt::new(f, e) }>)
 
         rule handle() -> Handle = span(<
-            kw(<"handle">) _ e:expr() eol()? alts:multiline(<handle_alt()>) {
+            kw(<"handle">) _ e:expr() ___ alts:multiline(<handle_alt()>) {
                 Handle::new(e, alts)
             }
         >)
@@ -307,7 +307,9 @@ peg::parser! {
             "[" es:((_ e:expr() _ {e}) ** ",") "]" { ExprKind::List(es) }
 
             // record expression
-            "{" fs:((_ n:ident() _ "=" _ e:expr() { (n, e) }) ** (eol()? "," eol()?)) "}" { ExprKind::Record(fs) }
+            "{" fs:((___ n:ident() _ "=" _ e:expr() ___ { (n, e) }) ** ",") "}" {
+                ExprKind::Record(fs)
+            }
 
             l:node(<"(" _ ")" {LitKind::Unit}>) { ExprKind::Lit(l) }
             l:lit() { ExprKind::Lit(l) }

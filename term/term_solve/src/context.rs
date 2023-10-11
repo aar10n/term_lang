@@ -97,6 +97,12 @@ impl DerefMut for Context<'_> {
     }
 }
 
+impl<'a> From<&'a mut core::Context> for Context<'a> {
+    fn from(value: &'a mut core::Context) -> Self {
+        Self::new(value)
+    }
+}
+
 fn nth_monotype_var(mut n: usize) -> Ustr {
     let var = "t";
     let digits = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];

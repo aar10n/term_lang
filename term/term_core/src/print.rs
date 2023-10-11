@@ -32,10 +32,21 @@ impl PrettyPrint<Context> for Expr {
         write!(out, "{tab}")?;
         match self {
             Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
-            Expr::Wildcard => write!(out, "{PUNCT}_{RESET}"),
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
             Expr::Sym(n) => write!(out, "{BLUE}{}{RESET}", n),
             Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
+            Expr::Record(fs) => {
+                write!(out, "{LBRACE}")?;
+                let mut fs = fs.iter().peekable();
+                while let Some((name, e)) = fs.next() {
+                    write!(out, "{BLUE}{}{RESET} {PUNCT}:{RESET} ", name.as_ref())?;
+                    e.pretty_print(out, ctx, 0)?;
+                    if fs.peek().is_some() {
+                        write!(out, "{PUNCT},{RESET} ")?;
+                    }
+                }
+                write!(out, "{RBRACE}")
+            }
 
             Expr::Apply(a, b) => {
                 write!(out, "{LPARN}")?;
@@ -86,10 +97,13 @@ impl PrettyPrint<Context> for TyE {
         ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
-        self.ty.pretty_print(out, ctx, Default::default())?;
-        if !self.ef.is_pure() {
+        let params = RefCell::new(BTreeMap::new());
+        if self.ef.is_pure() {
+            self.ty.pretty_print(out, ctx, params.clone())?;
+        } else {
+            self.ty.pretty_print(out, ctx, params.clone())?;
             write!(out, " {TILDE} ");
-            self.ef.pretty_print(out, ctx, level)?;
+            self.ef.pretty_print(out, ctx, params.clone())?;
         }
         Ok(())
     }
@@ -105,6 +119,7 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
         match self {
             Ty::Infer => write!(out, "{PUNCT}?{RESET}"),
             Ty::Never => write!(out, "{BLUE}never{RESET}"),
+            Ty::Cont => write!(out, "{BLUE}cont{RESET}"),
             Ty::Unit => write!(out, "{LPARN}{RPARN}"),
             Ty::Symbol(s) => write!(out, "{BLUE}{}{RESET}", s.as_str()),
             Ty::Mono(id) => write!(out, "{GREEN}{}{RESET}", id),
@@ -123,7 +138,14 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                 write_args_list(out, ctx, ts, QUOTE, " ")
             }
             Ty::Func(a, b) => {
-                a.pretty_print(out, ctx, 0)?;
+                if matches!(a.ty, Ty::Func(_, _)) {
+                    write!(out, "{LPARN}")?;
+                    a.pretty_print(out, ctx, 0)?;
+                    write!(out, "{RPARN}")?;
+                } else {
+                    a.pretty_print(out, ctx, 0)?;
+                }
+
                 write!(out, " {ARROW} ")?;
                 b.pretty_print(out, ctx, 0)
             }
@@ -141,10 +163,14 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                 write!(out, "{RBRACE}")
             }
             Ty::Effectful(t, f) => {
-                t.pretty_print(out, ctx, Default::default());
-                if !f.is_pure() {
+                if f.is_pure() {
+                    t.pretty_print(out, ctx, Default::default());
+                } else {
+                    write!(out, "{LPARN}")?;
+                    t.pretty_print(out, ctx, Default::default());
                     write!(out, " {TILDE} ")?;
-                    f.pretty_print(out, ctx, 0)?;
+                    f.pretty_print(out, ctx, Default::default())?;
+                    write!(out, "{RPARN}")?;
                 }
                 Ok(())
             }
@@ -152,25 +178,36 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
     }
 }
 
-impl PrettyPrint<Context> for Ef {
+impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ef {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
         ctx: &Context,
-        level: usize,
+        params: RefCell<BTreeMap<PolyVarId, Ustr>>,
     ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        write!(out, "{tab}")?;
         match self {
-            Ef::Infer => write!(out, "{PUNCT}_{RESET}"),
+            Ef::Infer => write!(out, "{PUNCT}?{RESET}"),
             Ef::Pure => write!(out, "{PUNCT}pure{RESET}"),
             Ef::Mono(id) => write!(out, "{GREEN}{}{RESET}", id),
-            Ef::Poly(id) => write!(out, "{MAGENTA}{}{RESET}", id),
+            Ef::Poly(id) => {
+                write!(out, "{MAGENTA}{}{RESET}", id.raw)
+                // let mut params = params.borrow_mut();
+                // if let Some(name) = params.get(id) {
+                //     write!(out, "{MAGENTA}{}{RESET}", name)
+                // } else {
+                //     let name = index_to_ident(params.len());
+                //     params.insert(*id, name);
+                //     write!(out, "{MAGENTA}{}{RESET}", name)
+                // }
+            }
             Ef::Effect(id, ts) => {
                 id.pretty_print(out, ctx, 0)?;
                 write_args_list(out, ctx, ts, QUOTE, " ")
             }
-            Ef::Union(ts) => write_list(out, ctx, PIPE_SEP, ts),
+            Ef::Union(fs) => {
+                let fs = fs.iter().filter(|f| !f.is_pure()).collect::<Vec<_>>();
+                write_list(out, ctx, PIPE_SEP, &fs)
+            }
         }
     }
 }
@@ -199,7 +236,7 @@ impl PrettyPrint<Context> for (Ef, Expr) {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
-        self.0.pretty_print(out, ctx, 0)?;
+        self.0.pretty_print(out, ctx, Default::default())?;
         write!(out, " {PUNCT}->{RESET} ")?;
         self.1.pretty_print(out, ctx, 0)
     }
@@ -370,7 +407,9 @@ impl PrettyPrint<Context> for Effect {
             writeln!(out)?;
         }
         writeln!(out, "{ttab}{ATTR}ops:{RESET}")?;
-        write_bulleted(out, ctx, &self.ops, level + 2)
+        write_bulleted(out, ctx, &self.ops, level + 2)?;
+        // write!(out, "{ttab}{}", self.handler_ty.pretty_string(ctx))
+        Ok(())
     }
 }
 

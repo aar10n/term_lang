@@ -10,20 +10,29 @@ use print::{PrettyPrint, PrettyString};
 use std::collections::{BTreeMap, HashMap};
 
 pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
+    if t1 != t2 {
+        // debug_println!(
+        //     "unify_ty: {} = {}",
+        //     t1.pretty_string(ctx),
+        //     t2.pretty_string(ctx)
+        // );
+    }
+
     use Ty::*;
     Ok(match (t1, t2) {
         (Infer, t) | (t, Infer) => t,
         (Never, Never) => Never,
+        (Cont, Cont) => Cont,
         (Unit, Unit) => Unit,
         (Symbol(x), Symbol(y)) if x == y => Symbol(x),
         (t, Mono(x)) | (Mono(x), t) => {
             let tt = t.clone();
             let t = update(ctx, t);
-            debug_println!(
-                "find({}) -> {}",
-                tt.pretty_string(ctx),
-                t.pretty_string(ctx)
-            );
+            // debug_println!(
+            //     "find({}) -> {}",
+            //     tt.pretty_string(ctx),
+            //     t.pretty_string(ctx)
+            // );
 
             if ty_occurs(&Mono(x), &t) {
                 return Err(
@@ -32,12 +41,12 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
                 );
             }
             let result = ctx.ty_set.union(t.clone(), Mono(x));
-            debug_println!(
-                "union({}, {}) -> {}",
-                t.pretty_string(ctx),
-                Mono(x).pretty_string(ctx),
-                result.pretty_string(ctx)
-            );
+            // debug_println!(
+            //     "union({}, {}) -> {}",
+            //     t.pretty_string(ctx),
+            //     Mono(x).pretty_string(ctx),
+            //     result.pretty_string(ctx)
+            // );
             result
         }
         (Data(id1, ts1), Data(id2, ts2)) if id1 == id2 => {
@@ -226,32 +235,47 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
     }
 }
 
-pub fn simplify(t: Ty) -> TyE {
+pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
     use Ty::*;
     match t {
         Data(id, ts) => {
-            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
-            TyE::pure(Data(id, ts))
+            let (ts, f, cs) =
+                ts.into_iter()
+                    .fold((vec![], Ef::Infer, vec![]), |(mut ts, f, mut cs), t| {
+                        let (t, f1, cs1) = crate::cannonicalize(ctx, t).into_tuple();
+                        ts.push(TyE::pure(t));
+                        cs.extend(cs1);
+                        (ts, f | f1, cs)
+                    });
+            TyE::new(Data(id, ts), f, cs)
         }
         Func(box t1, box t2) => {
-            let t1 = crate::simplify(t1);
-            let (t2, f, cs) = crate::simplify(t2).into_tuple();
-            TyE::new(Ty::Func(t1.into(), TyE::pure(t2).into()).into(), f, cs)
+            let (t1, f1, mut cs) = crate::cannonicalize(ctx, t1).into_tuple();
+            let (t2, f2, cs2) = crate::cannonicalize(ctx, t2).into_tuple();
+            cs.extend(cs2);
+            TyE::new(
+                Ty::Func(TyE::pure(t1).into(), TyE::pure(t2).into()).into(),
+                f1 | f2,
+                cs,
+            )
         }
         Sum(ts) => {
-            let ts = ts.into_iter().map(|t| crate::simplify(t)).collect();
+            let ts = ts
+                .into_iter()
+                .map(|t| crate::cannonicalize(ctx, t))
+                .collect();
             TyE::pure(Sum(ts))
         }
         Record(fields) => {
             let fields = fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::simplify(v)))
+                .map(|(k, v)| (k, crate::cannonicalize(ctx, v)))
                 .collect();
             TyE::pure(Record(fields))
         }
         Effectful(box t, f) => {
-            let (t, f2, cs) = simplify(t).into_tuple();
-            let f = ef::simplify(f | f2);
+            let (t, f2, cs) = cannonicalize(ctx, t).into_tuple();
+            let f = ef::cannonicalize(ctx, f | f2);
             TyE::new(t, f, cs)
         }
         _ => TyE::pure(t),

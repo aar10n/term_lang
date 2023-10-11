@@ -12,6 +12,14 @@ effect IO
     | write_char : Char -> () ~ Except'IOError
     ;
 
-data IOError = IOError {
-    msg : String
-};
+data IOError = IOError { msg : String };
+
+
+panic : a -> never
+println : String -> () ~ IO
+
+
+test () = handle (raise 1)
+    | Except'Int ~> { raise = k _ => k () }
+    | () ~> println "ok"
+    ;

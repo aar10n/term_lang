@@ -41,7 +41,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
         let body = lower::lower_lambda(&mut self.ctx, params, body)?;
         println!("inferring type of body: {}", body.pretty_string(self.ctx));
         let ty = solve::infer(&mut self.ctx, &body)?;
-        println!("type inferred to be: {}", ty.pretty_string(self.ctx));
+        let t = lower::cannonical_ty(self.ctx, ty);
+        println!("type inferred to be: {}", t.pretty_string(self.ctx));
 
         // let ty = if let Some(decl_id) = self.ctx.var_decl_ids.get(&id) {
         //     let decl = self.ctx.decls[decl_id].clone();

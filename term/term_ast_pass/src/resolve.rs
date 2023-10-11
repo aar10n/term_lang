@@ -158,13 +158,24 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         }
     }
 
-    pub fn resolve_ty(&self, name: &Ident) -> diag::Result<Id> {
+    pub fn resolve_ty(&self, name: &Ident) -> diag::Result<Option<Id>> {
         for scope in self.scopes.iter().rev() {
             if let Some(id) = scope.tys.get(&name.raw) {
-                return Ok((*id).into());
+                return Ok(Some((*id).into()));
             }
         }
-        self.resolve_global_type("type", name, |id| id.is_data() | id.is_poly_var())
+
+        match self.ctx.global_types.get(name) {
+            Some(id) if id.is_data() || id.is_poly_var() => Ok(Some(*id)),
+            Some(id) => UnresolvedNameErr {
+                kind: "type",
+                name: name.raw.to_string(),
+                span: name.span(),
+                conflict: self.ctx.id_as_span(*id),
+            }
+            .into_err(),
+            None => Ok(None),
+        }
     }
 }
 
@@ -257,8 +268,22 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             return Ok(());
         }
 
-        let id = self.resolve_ty(ident)?;
-        ident.id = Some(id);
+        if let Some(id) = self.resolve_ty(ident)? {
+            ident.id = Some(id);
+        } else if ident.raw.chars().next().unwrap().is_lowercase() {
+            // implicit type variable
+            let id = self.ctx.ids.next_poly_var_id();
+            self.ctx.register_id_name(id, ident.raw, ident.span());
+            ident.id = Some(id.into());
+        } else {
+            return UnresolvedNameErr {
+                kind: "type",
+                name: ident.raw.to_string(),
+                span: ident.span(),
+                conflict: None,
+            }
+            .into_err();
+        }
         Ok(())
     }
 

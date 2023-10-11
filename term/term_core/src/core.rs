@@ -49,14 +49,14 @@ pub enum Expr {
     /// Type.
     Type(P<TyE>),
 
-    /// Wildcard.
-    Wildcard,
     /// Literal.
     Lit(Lit),
     /// Symbol.
     Sym(Ustr),
     /// Variable.
     Var(VarId),
+    /// Record.
+    Record(BTreeMap<Ustr, Expr>),
 
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
@@ -98,18 +98,14 @@ impl TyE {
         Self { ty, ef, cs }
     }
 
+    pub fn simple(ty: Ty, ef: Ef) -> Self {
+        Self::new(ty, ef, vec![])
+    }
+
     pub fn pure(ty: Ty) -> Self {
         Self {
             ty,
             ef: Ef::Pure,
-            cs: vec![],
-        }
-    }
-
-    pub fn unit(ef: Ef) -> Self {
-        Self {
-            ty: Ty::Unit,
-            ef,
             cs: vec![],
         }
     }
@@ -122,10 +118,10 @@ impl TyE {
         }
     }
 
-    pub fn infer_ef(ty: Ty) -> Self {
+    pub fn pure_func(a: TyE, b: TyE) -> Self {
         Self {
-            ty,
-            ef: Ef::Infer,
+            ty: Ty::Func(a.into(), b.into()),
+            ef: Ef::Pure,
             cs: vec![],
         }
     }
@@ -138,16 +134,26 @@ impl TyE {
         !self.ef.is_pure()
     }
 
-    pub fn with_effect(self, ef: Ef) -> Self {
-        Self {
-            ty: self.ty,
-            ef: self.ef | ef,
-            cs: self.cs,
-        }
+    pub fn return_ty(&self) -> Option<&TyE> {
+        self.ty.return_ty()
+    }
+
+    pub fn with_ef(self, ef: Ef) -> Self {
+        Self::new(self.ty, self.ef | ef, self.cs)
+    }
+
+    pub fn with_cs(self, iter: impl IntoIterator<Item = Constraint>) -> Self {
+        let mut cs = self.cs;
+        cs.extend(iter);
+        Self::new(self.ty, self.ef, cs)
     }
 
     pub fn into_tuple(self) -> (Ty, Ef, Vec<Constraint>) {
         (self.ty, self.ef, self.cs)
+    }
+
+    pub fn split_ef(self) -> (TyE, Ef) {
+        (TyE::new(self.ty, Ef::Pure, self.cs), self.ef)
     }
 }
 
@@ -158,6 +164,8 @@ pub enum Ty {
     Infer,
     /// The never type.
     Never,
+    /// The continue type.
+    Cont,
     /// The unit type.
     Unit,
     /// Symbolic constant.
@@ -180,12 +188,13 @@ pub enum Ty {
 
 impl Ty {
     pub fn is_const(&self) -> bool {
-        matches!(self, Self::Unit | Self::Symbol(_))
+        matches!(self, Self::Unit | Self::Cont | Self::Symbol(_))
     }
 
     pub fn is_concrete(&self) -> bool {
         match self {
             Self::Infer | Self::Mono(_) | Self::Poly(_) => false,
+            Self::Data(_, ts) => ts.iter().all(|t| t.is_concrete()),
             Self::Func(box a, box b) => a.is_concrete() && b.is_concrete(),
             Self::Sum(ts) => ts.iter().all(|t| t.is_concrete()),
             Self::Record(fs) => fs.values().all(|t| t.is_concrete()),
@@ -196,11 +205,19 @@ impl Ty {
 
     pub fn has_effect(&self) -> bool {
         match self {
+            Self::Data(_, ts) => ts.iter().any(|t| t.has_effect()),
             Self::Func(a, b) => a.has_effect() || b.has_effect(),
             Self::Sum(ts) => ts.iter().any(|t| t.has_effect()),
             Self::Record(fs) => fs.values().any(|t| t.has_effect()),
             Self::Effectful(_, _) => true,
             _ => false,
+        }
+    }
+
+    pub fn return_ty(&self) -> Option<&TyE> {
+        match self {
+            Self::Func(_, b) => Some(b),
+            _ => None,
         }
     }
 }
@@ -256,10 +273,16 @@ impl BitOr for Ef {
 
     fn bitor(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
+            (Self::Infer, f) | (f, Self::Infer) => f,
             (Self::Pure, f) | (f, Self::Pure) => f,
-            (Self::Union(mut ts), f) | (f, Self::Union(mut ts)) => {
-                ts.push(f);
-                Self::Union(ts)
+            (Self::Union(mut fs), f) | (f, Self::Union(mut fs)) => {
+                fs.push(f);
+                fs.dedup();
+                if fs.len() == 1 {
+                    fs.pop().unwrap()
+                } else {
+                    Self::Union(fs)
+                }
             }
             (lhs, rhs) => Self::Union(vec![lhs, rhs]),
         }
@@ -268,12 +291,15 @@ impl BitOr for Ef {
 
 impl From<HashSet<Ef>> for Ef {
     fn from(mut set: HashSet<Ef>) -> Self {
+        set.remove(&Self::Pure);
         if set.is_empty() {
             Self::Pure
         } else if set.len() == 1 {
             set.into_iter().next().unwrap()
         } else {
-            Self::Union(set.into_iter().collect())
+            let mut fs = set.into_iter().collect::<Vec<_>>();
+            fs.sort();
+            Self::Union(fs)
         }
     }
 }
@@ -400,6 +426,8 @@ pub struct Effect {
     pub constraints: Vec<Constraint>,
     /// Effect type operations.
     pub ops: Vec<EffectOp>,
+    /// Type of a handler for this effect.
+    pub handler_ty: TyE,
     /// Effect handlers.
     pub handlers: Vec<HandlerId>,
     /// Default handler.
