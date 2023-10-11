@@ -1,3 +1,2 @@
+#![allow(unused)]
 mod rewrite;
-
-pub use rewrite::*;

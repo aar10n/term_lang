@@ -22,6 +22,8 @@ pub fn new_context() -> Context {
 
     ctx.register_builtin("panic");
     ctx.register_builtin("println");
+    ctx.register_builtin("builtin_put_char");
+    ctx.register_builtin("builtin_get_char");
     ctx
 }
 
@@ -37,13 +39,18 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
 
     module.print_stdout(&ctx);
 
-    let pass2 = compose![pass::lower_decls, pass::lower_exprs];
+    let pass2 = compose![pass::lower_decls, pass::lower_impls];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, pass2) {
         ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
     ctx.print_stdout(&());
+
+    if let Err(errs) = pass::apply(&mut ctx, &mut module, pass::lower_exprs) {
+        return Err(Report::from(errs));
+    }
+
     println!("{GREEN}Done{RESET}");
     Ok(())
 }

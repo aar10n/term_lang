@@ -284,12 +284,12 @@ impl Lower for ast::EffectOpImpl {
             lower_lambda(ctx, &self.params, &self.expr)? // function
         };
 
-        let ty = TyE::pure(Ty::Infer);
+        // let ty = TyE::pure(Ty::Infer);
         // println!(
         //     "inferring type of effect op body: {}",
         //     body.pretty_string(ctx)
         // );
-        // let ty = solve::infer(ctx.ctx, &body)?;
+        let ty = solve::infer(ctx.ctx, &body)?;
         // println!("effect op type inferred to be: {}", ty.pretty_string(ctx));
         Ok((op_id, Def::new(id, ty, body)))
     }

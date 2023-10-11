@@ -60,21 +60,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
         Ok(())
     }
 
-    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let handler = handler.lower(&mut self.ctx)?;
-        self.ctx.handlers.insert(handler.id, handler);
-        Ok(())
-    }
-
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
         let class = class.lower(&mut self.ctx)?;
         self.ctx.classes.insert(class.id, class);
-        Ok(())
-    }
-
-    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let inst = inst.lower(&mut self.ctx)?;
-        self.ctx.insts.insert(inst.id, inst);
         Ok(())
     }
 

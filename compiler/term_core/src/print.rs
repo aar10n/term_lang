@@ -330,7 +330,7 @@ impl PrettyPrint<Context> for Def {
             writeln!(out, "{ttab}{ATTR}body:{RESET} {BOLD}<builtin>{RESET}")?;
         } else {
             writeln!(out, "{ttab}{ATTR}body:{RESET}")?;
-            self.body.pretty_print(out, ctx, level + 2)?;
+            self.body.pretty_print(out, ctx, level + 1)?;
         }
         Ok(())
     }

@@ -6,6 +6,7 @@ mod collect;
 pub mod lower;
 mod lower_decl;
 mod lower_expr;
+mod lower_impl;
 mod resolve;
 
 use term_ast as ast;
@@ -20,6 +21,7 @@ pub use ast::Context;
 pub use collect::*;
 pub use lower_decl::*;
 pub use lower_expr::*;
+pub use lower_impl::*;
 pub use resolve::*;
 
 /// A duplicate declaration error.
