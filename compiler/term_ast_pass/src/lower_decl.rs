@@ -28,7 +28,7 @@ impl<'v, 'ast> LowerDeclVisitor<'v, 'ast> {
     pub fn register_defs(&mut self, defs: Vec<core::Def>) {
         for def in defs {
             println!(
-                "registering built-in {} : {}",
+                "registering def {} : {}",
                 def.id.pretty_string(self.ctx),
                 def.ty.pretty_string(self.ctx)
             );

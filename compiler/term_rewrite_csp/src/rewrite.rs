@@ -19,7 +19,7 @@ pub fn rewrite_csp(ctx: &mut Context, expr: Expr) -> Expr {
         Lambda(_, _) => todo!(),
         Let(_, _) => todo!(),
         Case(_, _) => todo!(),
-        Handle(_, _, _) => todo!(),
+        Handle(..) => todo!(),
         Do(_) => todo!(),
 
         Span(_, _) => todo!(),

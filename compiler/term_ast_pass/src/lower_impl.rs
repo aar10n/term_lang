@@ -24,6 +24,17 @@ impl<'v, 'ast> LowerImplVisitor<'v, 'ast> {
     pub fn new(ctx: &'v mut Context<'ast>) -> Self {
         Self { ctx }
     }
+
+    pub fn register_defs(&mut self, defs: Vec<core::Def>) {
+        for def in defs {
+            println!(
+                "registering def {} : {}",
+                def.id.pretty_string(self.ctx),
+                def.ty.pretty_string(self.ctx)
+            );
+            self.ctx.defs.insert(def.id, def);
+        }
+    }
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
@@ -32,8 +43,15 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
     }
 
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let handler = handler.lower(&mut self.ctx)?;
+        let is_default = handler.default;
+        let (handler, defs) = handler.lower(&mut self.ctx)?;
+        if is_default {
+            let effect = self.ctx.effects.get_mut(&handler.effect_id).unwrap();
+            effect.default = Some(handler.id);
+        }
+
         self.ctx.handlers.insert(handler.id, handler);
+        self.register_defs(defs);
         Ok(())
     }
 

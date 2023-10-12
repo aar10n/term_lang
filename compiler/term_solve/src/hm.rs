@@ -30,13 +30,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     None => {
                         return if let Some(span) = ctx.id_as_span(id) {
                             Diagnostic::error(
-                                format!("name not found: {}", id.pretty_string(ctx)),
+                                format!("no definition found for name: {}", id.pretty_string(ctx)),
                                 span,
                             )
                             .into_err()
                         } else {
-                            Err(format!("name not found: {}", id.pretty_string(ctx))
-                                .into_diagnostic())
+                            Err(
+                                format!("no definition found for name: {}", id.pretty_string(ctx))
+                                    .into_diagnostic(),
+                            )
                         }
                     }
                 }
@@ -198,20 +200,20 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
             TyE::new(res_t, res_f, vec![])
         }
-        Handle(box e, alts, unhandled) => {
+        Handle(box e, alts) => {
             // handle expressions permit the binding handlers to effects.
             debug_println!(
                 "{tab}[han] solving: handle {} with \n\t{}",
                 e.pretty_string(ctx),
                 alts.iter()
-                    .map(|(f, e)| format!("{} ~> {}", f.pretty_string(ctx), e.pretty_string(ctx)))
+                    .map(|(ea)| format!("{} ~> {}", ea.pretty_string(ctx), e.pretty_string(ctx)))
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
             let (expr_t, expr_f, expr_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
 
+            let mut ret_t = None;
             let mut fs = expr_f.into_hashset();
-            let mut res_t = None;
             for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
                     "{tab}[han] solving: {} ~> {}",
@@ -221,7 +223,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
                 let t = algorithmj(ctx, e.clone(), level + 1)?;
                 if f.is_pure() {
-                    res_t = Some(t);
+                    ret_t = Some(t);
                     continue;
                 }
 
@@ -240,18 +242,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 }
             }
 
-            let res_f = Ef::from(fs);
-            let result = if let Some(t) = res_t {
-                t.with_ef(res_f).with_cs(expr_cs)
+            let expr_f = Ef::from(fs);
+            let result = if let Some(ret_t) = ret_t {
+                ret_t.with_ef(expr_f).with_cs(expr_cs)
             } else {
-                TyE::new(Ty::Unit, res_f, expr_cs)
+                TyE::new(expr_t, expr_f, expr_cs)
             };
 
-            debug_println!(
-                "{tab}[han] done: {} | t: {}",
-                result.pretty_string(ctx),
-                expr_t.pretty_string(ctx),
-            );
+            debug_println!("{tab}[han] done: {} ", result.pretty_string(ctx));
             result
         }
         Do(es) => {
@@ -289,9 +287,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
     use Ef::*;
     Ok(match f {
-        Infer | Pure | Mono(_) | Poly(_) => {
-            return format!("expected effect, found `{}`", f.pretty_string(ctx)).into_err()
-        }
         Effect(ef_id, ts) => {
             let effect = ctx.effects.get(ef_id).unwrap();
             let mut t = crate::instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
@@ -302,6 +297,7 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
             // combining all the records into one.
             format!("invalid effect pattern: `{}`", f.pretty_string(ctx)).into_err()?
         }
+        _ => return format!("expected effect, found `{}`", f.pretty_string(ctx)).into_err(),
     })
 }
 

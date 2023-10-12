@@ -21,23 +21,15 @@ effect IO
 data IOError = IOError { msg : String };
 
 default handler stdio for IO
-    | read_char = builtin_put_char
-    | write_char = builtin_get_char
+    | read_char = builtin_get_char
+    | write_char = builtin_put_char
     ;
 
 
-# the effect operator `~` handled effects in the applied expression
-# by all applicable handlers. 
-test () = do
-    | ~println "hi"
-    | 1
-    ;
+# the effect operator `~` binds default handers to effects in the applied expression
+foo () = println "hi"
+bar () = ~println "hi"
 
-#test () = do
-#    | handle (println "hi");
-#    ;
-
-# -----------
 
 #test () k = do
 #    | handle (println "hi")

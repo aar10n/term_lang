@@ -287,7 +287,7 @@ pub enum Expr {
     /// Case expression.
     Case(P<Expr>, Vec<Alt>),
     /// Handle expression.
-    Handle(P<Expr>, Vec<EfAlt>, Unhandled),
+    Handle(P<Expr>, Vec<EfAlt>),
     /// Do expression.
     Do(Vec<Expr>),
 
@@ -318,12 +318,6 @@ pub struct EfAlt {
     pub ef: Ef,
     pub expr: Expr,
     pub handler: Option<VarId>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Unhandled {
-    Bind,
-    Ignore,
 }
 
 /// A name binding.

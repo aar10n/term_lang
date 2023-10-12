@@ -11,7 +11,7 @@ use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::vec;
 use ustr::{ustr, UstrMap};
 
@@ -244,26 +244,40 @@ impl Lower for ast::EffectOpDecl {
 }
 
 impl Lower for ast::EffectHandler {
-    type Target = core::Handler;
+    type Target = (core::Handler, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Def, Expr, Handler, Ty};
         let effect_id = unwrap_resolved_ident(&self.effect)?.effect_id();
         let id = self.name.id.unwrap().handler_id();
+        let var_id = ctx.handler_var_ids[&id];
         let (params, constraints) = self.ty_args.lower(ctx)?;
 
+        let mut rec_exprs = BTreeMap::new();
+        let mut rec_tys = BTreeMap::new();
         let mut ops = BTreeMap::new();
-        for (op_id, def) in self.ops.lower(ctx)? {
+        let mut defs = vec![];
+        for op in self.ops.iter() {
+            let name = op.name.raw;
+            let (op_id, def) = op.lower(ctx)?;
             ops.insert(op_id, def.id);
-            ctx.defs.insert(def.id, def);
+            rec_exprs.insert(name.clone(), Expr::Var(def.id));
+            rec_tys.insert(name.clone(), def.ty.clone());
+            defs.push(def);
         }
 
-        Ok(core::Handler {
+        let handler_ty = TyE::pure(Ty::Record(rec_tys));
+        let handler_def = Def::new(var_id, handler_ty, Expr::Record(rec_exprs));
+        defs.push(handler_def);
+
+        let handler = Handler {
             effect_id,
             id,
             params,
             constraints,
             ops,
-        })
+        };
+        Ok((handler, defs))
     }
 }
 
@@ -464,7 +478,7 @@ impl Lower for ast::Expr {
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::{ExprKind, UnOp};
-        use core::{Bind, Expr, Id, Unhandled};
+        use core::{Bind, Expr, Id};
         let e = match &self.kind {
             ExprKind::Apply(a, b) => {
                 let a = a.lower(ctx)?;
@@ -478,10 +492,10 @@ impl Lower for ast::Expr {
                 Expr::Apply(Expr::Apply(op.into(), a.into()).into(), b.into())
             }
             ExprKind::Unary(op, a) => {
-                let a = a.lower(ctx)?;
                 if matches!(op, UnOp::Effect) {
-                    Expr::Handle(a.into(), vec![], Unhandled::Bind)
+                    lower_handled_expr(ctx, a)?
                 } else {
+                    let a = a.lower(ctx)?;
                     let op = Expr::Sym(ustr(op.as_str()));
                     Expr::Apply(op.into(), a.into())
                 }
@@ -569,10 +583,10 @@ impl Lower for ast::Handle {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Expr, Unhandled};
+        use core::Expr;
         let e = self.expr.lower(ctx)?;
-        let bs = self.alts.lower(ctx)?;
-        Ok(Expr::Handle(e.into(), bs, Unhandled::Ignore))
+        let hs = self.alts.lower(ctx)?;
+        Ok(Expr::Handle(e.into(), hs))
     }
 }
 
@@ -723,6 +737,40 @@ pub fn make_ty_func(
             t = Ty::Func(p.into(), t.into()).into();
         }
         t
+    }
+}
+
+pub fn lower_handled_expr(ctx: &mut Context, expr: &ast::Expr) -> diag::Result<core::Expr> {
+    use core::{Ef, EfAlt, Expr};
+    let expr = expr.lower(ctx)?;
+    let (t, f) = solve::infer(ctx, &expr)?.split_ef();
+
+    let mut hs = vec![];
+    let mut fs = HashSet::<Ef>::new();
+    for f in f.into_hashset().into_iter() {
+        let ef_id = match f {
+            Ef::Effect(id, _) => id,
+            _ => continue,
+        };
+
+        let effect = &ctx.effects[&ef_id];
+        if let Some(handler_id) = effect.default {
+            let var_id = ctx.handler_var_ids[&handler_id];
+            let alt = EfAlt {
+                ef: f.clone(),
+                expr: Expr::Var(var_id),
+                handler: Some(var_id),
+            };
+
+            hs.push(alt);
+            fs.remove(&f);
+        }
+    }
+
+    if hs.is_empty() {
+        Ok(expr)
+    } else {
+        Ok(Expr::Handle(expr.into(), hs))
     }
 }
 
