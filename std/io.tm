@@ -1,7 +1,7 @@
 panic : a -> never
 println : String -> () ~ IO
-builtin_put_char : Char -> () ~ Except'IOError
-builtin_get_char : () -> Char ~ Except'IOError
+builtin_put_char : Char -> ()
+builtin_get_char : () -> Char
 
 
 data List : a =
@@ -14,8 +14,8 @@ effect Except : e
     ;
 
 effect IO
-    | read_char : () -> Char ~ Except'IOError
-    | write_char : Char -> () ~ Except'IOError
+    | read_char : () -> Char
+    | write_char : Char -> ()
     ;
 
 data IOError = IOError { msg : String };
@@ -30,6 +30,12 @@ default handler stdio for IO
 foo () = println "hi"
 bar () = ~println "hi"
 
+#bar () k = do
+#    | x = handle (println "hi")
+#        | IO ~> stdio
+#        ;
+#    | k x
+#    ;
 
 #test () k = do
 #    | handle (println "hi")

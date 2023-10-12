@@ -5,9 +5,10 @@ use term_print as print;
 
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
-use type_env::TSet;
 
+use either::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use type_env::TSet;
 
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<TyE> {
     use self::Bind::*;
@@ -100,24 +101,22 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
             result
         }
-        Lambda(x, box e) => {
+        Lambda(box p, box e) => {
             debug_println!(
                 "{tab}[lam] solving: λ{}.{}",
                 x.pretty_string(ctx),
-                e.pretty_string(ctx)
+                p.pretty_string(ctx)
             );
-            let v = ctx.new_ty_var();
-            let f = ctx.new_ef_var();
-            let t = TyE::simple(v.clone(), f.clone());
 
-            ctx.push_typing(Expr::Var(x), t.clone());
+            let (t, vars) = solve_collect_bindings(ctx, &p)?;
+            ctx.push_typings(vars);
             let (ret_t, ret_f, ret_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
             ctx.pop_typings();
 
-            let pt = crate::ty::update(ctx, v);
+            let pt = ty::update(ctx, t);
             let result = TyE::new(
                 Ty::Func(TyE::pure(pt).into(), TyE::pure(ret_t).into()),
-                f | ret_f,
+                ret_f,
                 ret_cs,
             );
             debug_println!("{tab}[lam] done: {}", result.pretty_string(ctx),);
@@ -212,7 +211,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
             let (expr_t, expr_f, expr_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
 
-            let mut ret_t = None;
             let mut fs = expr_f.into_hashset();
             for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
@@ -223,7 +221,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
                 let t = algorithmj(ctx, e.clone(), level + 1)?;
                 if f.is_pure() {
-                    ret_t = Some(t);
                     continue;
                 }
 
@@ -243,11 +240,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let expr_f = Ef::from(fs);
-            let result = if let Some(ret_t) = ret_t {
-                ret_t.with_ef(expr_f).with_cs(expr_cs)
-            } else {
-                TyE::new(expr_t, expr_f, expr_cs)
-            };
+            let result = TyE::new(expr_t, expr_f, expr_cs);
 
             debug_println!("{tab}[han] done: {} ", result.pretty_string(ctx));
             result
@@ -282,6 +275,53 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         }
     };
     Ok(result)
+}
+
+pub fn solve_collect_bindings(
+    ctx: &mut Context<'_>,
+    p: &Expr,
+) -> diag::Result<(Ty, Vec<(Expr, TyE)>)> {
+    use Expr::*;
+    match p {
+        Lit(l) => Ok((l.as_ty(), vec![])),
+        Var(id) => {
+            let v = ctx.new_ty_var();
+            Ok((v.clone(), vec![(Expr::Var(*id), TyE::pure(v))]))
+        }
+        Record(rec) => {
+            let mut fields = BTreeMap::new();
+            let mut vars = vec![];
+            for (n, e) in rec {
+                let (t, vs) = solve_collect_bindings(ctx, e)?;
+                fields.insert(*n, TyE::pure(t));
+                vars.extend(vs);
+            }
+            Ok((Ty::Record(fields), vars))
+        }
+        Apply(box e1, box e2) => {
+            // the outer leftmost expression must be a data constructor reference
+            let (t1, vs1) = if let Expr::Var(id) = e1 {
+                // id is a data constructor. get the type
+                let def = ctx.defs.get(id).unwrap();
+                let t = crate::instantiate(ctx, def.ty.clone(), &mut HashMap::default());
+                (t.ty, vec![])
+            } else {
+                solve_collect_bindings(ctx, e1)?
+            };
+            let (t2, vs2) = solve_collect_bindings(ctx, e2)?;
+
+            let v = ctx.new_ty_var();
+            crate::unify(
+                ctx,
+                TyE::pure(t1),
+                TyE::pure_func(TyE::pure(t2), TyE::pure(v.clone())),
+            )?;
+            let t = crate::update(ctx, TyE::pure(v.clone()));
+            Ok((v, vs1.into_iter().chain(vs2).collect()))
+        }
+        Span(_, box e) => solve_collect_bindings(ctx, e),
+        _ => format!("invalid pattern: `{}`", p.pretty_string(ctx)).into_err(),
+    }
 }
 
 pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {

@@ -11,4 +11,5 @@ term_core = { path = "../term_core" }
 term_diag = { path = "../term_diag" }
 term_print = { path = "../term_print" }
 
+either = "1.9.0"
 ustr = "0.10.0"

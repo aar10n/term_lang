@@ -281,7 +281,7 @@ pub enum Expr {
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
     /// Lambda abstraction (λx.a).
-    Lambda(VarId, P<Expr>),
+    Lambda(P<Expr>, P<Expr>),
     /// Let binding (x = a in b).
     Let(Bind, Option<P<Expr>>),
     /// Case expression.

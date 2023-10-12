@@ -400,13 +400,7 @@ impl Lower for ast::MethodImpl {
             Def::new(id, TyE::infer(), expr)
         } else {
             // function
-            let mut expr = self.expr.lower(ctx)?;
-            for p in self.params.lower(ctx)?.into_iter().rev() {
-                let v = ctx.ids.next_var_id();
-                let b = Bind::NonRec(p.into(), Expr::Var(v).into());
-                expr = Expr::Lambda(v, Expr::Let(b, Some(Expr::Var(v).into())).into());
-            }
-
+            let expr = lower_lambda(ctx, &self.params, &self.expr)?;
             Def::new(id, TyE::infer(), expr)
         })
     }
@@ -679,15 +673,15 @@ impl Lower for ast::Pat {
                 // ((<cons> p0) ((<cons> p1) <nil>))
                 let mut expr = Expr::Var(nil_id);
                 for p in ps.lower(ctx)?.into_iter().rev() {
-                    let e = Expr::Apply(Expr::Var(cons_id).into(), p.into());
-                    expr = Expr::Apply(e.into(), expr.into());
+                    expr = make_cons_expr(cons_id, p, expr);
                 }
                 expr
             }
             PatKind::Cons(x, xs) => {
+                let cons_id = expect_var(ctx, "Cons")?;
                 let x = x.lower(ctx)?;
                 let xs = xs.lower(ctx)?;
-                Expr::Apply(x.into(), xs.into())
+                make_cons_expr(cons_id, x, xs)
             }
             PatKind::Lit(l) => l.lower(ctx)?,
             PatKind::Ident(n) => Expr::Var(unwrap_resolved_ident(n)?.var_id()),
@@ -719,6 +713,14 @@ impl Lower for ast::Ident {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         unwrap_resolved_ident(self)
     }
+}
+
+pub fn make_cons_expr(cons_id: VarId, a: core::Expr, b: core::Expr) -> core::Expr {
+    use core::Expr;
+    Expr::Apply(
+        Expr::Apply(Expr::Var(cons_id).into(), a.into()).into(),
+        b.into(),
+    )
 }
 
 pub fn make_ty_func(
@@ -783,17 +785,8 @@ pub fn lower_lambda(
     use core::{Bind, Expr};
     let mut expr = body.lower(ctx)?;
     for (i, p) in params.iter().enumerate().rev() {
-        if let PatKind::Ident(n) = &p.kind {
-            let v = n.id.unwrap().var_id();
-            expr = Expr::Lambda(v, expr.into());
-        } else {
-            let v = ctx.ids.next_var_id();
-            let name = format!("v_{}", i);
-            ctx.register_id_name(v, ustr(&name), Span::default());
-
-            let b = Bind::NonRec(p.lower(ctx)?.into(), Expr::Var(v).into());
-            expr = Expr::Lambda(v, Expr::Let(b, Some(expr.into())).into());
-        };
+        let p = p.lower(ctx)?;
+        expr = Expr::Lambda(p.into(), expr.into());
     }
     Ok(expr)
 }
