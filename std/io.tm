@@ -26,12 +26,16 @@ default handler stdio for IO
     ;
 
 
-# the effect operator `~` binds effects in the applied expression
-# to any applicable default handlers. 
+# the effect operator `~` handled effects in the applied expression
+# by all applicable handlers. 
 test () = do
-    | println "hi"
+    | ~println "hi"
     | 1
     ;
+
+#test () = do
+#    | handle (println "hi");
+#    ;
 
 # -----------
 

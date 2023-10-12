@@ -772,6 +772,7 @@ impl BinOp {
 #[rustfmt::skip]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnOp {
+    Effect,
     Pos, Neg, 
     Not,
 }
@@ -779,6 +780,7 @@ pub enum UnOp {
 impl UnOp {
     pub fn as_str(self) -> &'static str {
         match self {
+            Self::Effect => "~",
             Self::Pos => "+",
             Self::Neg => "-",
             Self::Not => "!",
@@ -798,7 +800,6 @@ impl_spanned!(ClassInst);
 impl_spanned!(MethodImpl);
 impl_spanned!(VarDecl);
 impl_spanned!(TyParams);
-// impl_spanned!(Expr);
 impl_spanned!(Do);
 impl_spanned!(Case);
 impl_spanned!(CaseAlt);

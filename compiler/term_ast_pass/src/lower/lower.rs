@@ -463,8 +463,8 @@ impl Lower for ast::Expr {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use ast::ExprKind;
-        use core::{Bind, Expr, Id};
+        use ast::{ExprKind, UnOp};
+        use core::{Bind, Expr, Id, Unhandled};
         let e = match &self.kind {
             ExprKind::Apply(a, b) => {
                 let a = a.lower(ctx)?;
@@ -478,9 +478,13 @@ impl Lower for ast::Expr {
                 Expr::Apply(Expr::Apply(op.into(), a.into()).into(), b.into())
             }
             ExprKind::Unary(op, a) => {
-                let op = Expr::Sym(ustr(op.as_str()));
                 let a = a.lower(ctx)?;
-                Expr::Apply(op.into(), a.into())
+                if matches!(op, UnOp::Effect) {
+                    Expr::Handle(a.into(), vec![], Unhandled::Bind)
+                } else {
+                    let op = Expr::Sym(ustr(op.as_str()));
+                    Expr::Apply(op.into(), a.into())
+                }
             }
             ExprKind::Case(c) => c.lower(ctx)?,
             ExprKind::Handle(h) => h.lower(ctx)?,
@@ -551,12 +555,13 @@ impl Lower for ast::Case {
 }
 
 impl Lower for ast::CaseAlt {
-    type Target = (core::Expr, core::Expr);
+    type Target = core::Alt;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        let p = self.pat.lower(ctx)?;
-        let e = self.expr.lower(ctx)?;
-        Ok((p, e))
+        use core::Alt;
+        let pat = self.pat.lower(ctx)?;
+        let expr = self.expr.lower(ctx)?;
+        Ok(Alt { pat, expr })
     }
 }
 
@@ -564,20 +569,22 @@ impl Lower for ast::Handle {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::Expr;
+        use core::{Expr, Unhandled};
         let e = self.expr.lower(ctx)?;
         let bs = self.alts.lower(ctx)?;
-        Ok(Expr::Handle(e.into(), bs))
+        Ok(Expr::Handle(e.into(), bs, Unhandled::Ignore))
     }
 }
 
 impl Lower for ast::HandleAlt {
-    type Target = (core::Ef, core::Expr);
+    type Target = core::EfAlt;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        let f = self.ef.lower(ctx)?;
-        let e = self.expr.lower(ctx)?;
-        Ok((f, e))
+        use core::EfAlt;
+        let ef = self.ef.lower(ctx)?;
+        let expr = self.expr.lower(ctx)?;
+        let handler = None;
+        Ok(EfAlt { ef, expr, handler })
     }
 }
 
@@ -594,15 +601,21 @@ impl Lower for ast::If {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Expr, Lit};
+        use core::{Alt, Expr, Lit};
         let c = self.cond.lower(ctx)?;
         let t = self.then.lower(ctx)?;
         let f = self.else_.lower(ctx)?;
         Ok(Expr::Case(
             c.into(),
             vec![
-                (Expr::Lit(Lit::Bool(true)), t),
-                (Expr::Lit(Lit::Bool(false)), f),
+                Alt {
+                    pat: Expr::Lit(Lit::Bool(true)),
+                    expr: t,
+                },
+                Alt {
+                    pat: Expr::Lit(Lit::Bool(false)),
+                    expr: f,
+                },
             ],
         ))
     }

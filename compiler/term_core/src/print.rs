@@ -74,8 +74,11 @@ impl PrettyPrint<Context> for Expr {
                 writeln!(out, " {KEYWORD}of{RESET} ")?;
                 write_bulleted_sep(out, ctx, bs, level + 1, "|")
             }
-            Expr::Handle(e, bs) => {
+            Expr::Handle(e, bs, u) => {
                 write!(out, "{KEYWORD}handle{RESET} ")?;
+                if matches!(u, Unhandled::Bind) {
+                    write!(out, "{TILDE} ")?;
+                }
                 write_indented(out, ctx, e, 0, false)?;
                 writeln!(out, " {KEYWORD}with{RESET} ")?;
                 write_bulleted_sep(out, ctx, bs, level + 1, "|")
@@ -211,7 +214,7 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ef {
     }
 }
 
-impl PrettyPrint<Context> for (Expr, Expr) {
+impl PrettyPrint<Context> for Alt {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
@@ -220,13 +223,13 @@ impl PrettyPrint<Context> for (Expr, Expr) {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
-        self.0.pretty_print(out, ctx, 0)?;
+        self.pat.pretty_print(out, ctx, 0)?;
         write!(out, " {PUNCT}->{RESET} ")?;
-        self.1.pretty_print(out, ctx, 0)
+        self.expr.pretty_print(out, ctx, 0)
     }
 }
 
-impl PrettyPrint<Context> for (Ef, Expr) {
+impl PrettyPrint<Context> for EfAlt {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
@@ -235,9 +238,13 @@ impl PrettyPrint<Context> for (Ef, Expr) {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
-        self.0.pretty_print(out, ctx, Default::default())?;
-        write!(out, " {PUNCT}->{RESET} ")?;
-        self.1.pretty_print(out, ctx, 0)
+        self.ef.pretty_print(out, ctx, Default::default())?;
+        write!(out, " {PUNCT}~>{RESET} ")?;
+        if let Some(id) = self.handler {
+            write!(out, "{}", id.pretty_string(ctx))
+        } else {
+            self.expr.pretty_print(out, ctx, 0)
+        }
     }
 }
 

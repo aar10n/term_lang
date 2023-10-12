@@ -43,48 +43,6 @@ declare_union_id!(Id {
     Var(VarId),
 });
 
-/// An generalized expression.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Expr {
-    /// Type.
-    Type(P<TyE>),
-
-    /// Literal.
-    Lit(Lit),
-    /// Symbol.
-    Sym(Ustr),
-    /// Variable.
-    Var(VarId),
-    /// Record.
-    Record(BTreeMap<Ustr, Expr>),
-
-    /// Application (a b).
-    Apply(P<Expr>, P<Expr>),
-    /// Lambda abstraction (λx.a).
-    Lambda(VarId, P<Expr>),
-    /// Let binding (x = a in b).
-    Let(Bind, Option<P<Expr>>),
-    /// Case expression.
-    Case(P<Expr>, Vec<(Expr, Expr)>),
-    /// Handle expression.
-    Handle(P<Expr>, Vec<(Ef, Expr)>),
-    /// Do expression.
-    Do(Vec<Expr>),
-
-    /// Source span info.
-    Span(Span, P<Expr>),
-}
-
-impl Expr {
-    pub fn unit() -> Self {
-        Self::Lit(Lit::Unit)
-    }
-
-    pub fn is_var(&self) -> bool {
-        matches!(self, Self::Var(_))
-    }
-}
-
 /// A type + effect + constraints.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TyE {
@@ -300,6 +258,72 @@ impl From<HashSet<Ef>> for Ef {
             Self::Union(fs)
         }
     }
+}
+
+//
+//
+
+/// An generalized expression.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Expr {
+    /// Type.
+    Type(P<TyE>),
+
+    /// Literal.
+    Lit(Lit),
+    /// Symbol.
+    Sym(Ustr),
+    /// Variable.
+    Var(VarId),
+    /// Record.
+    Record(BTreeMap<Ustr, Expr>),
+
+    /// Application (a b).
+    Apply(P<Expr>, P<Expr>),
+    /// Lambda abstraction (λx.a).
+    Lambda(VarId, P<Expr>),
+    /// Let binding (x = a in b).
+    Let(Bind, Option<P<Expr>>),
+    /// Case expression.
+    Case(P<Expr>, Vec<Alt>),
+    /// Handle expression.
+    Handle(P<Expr>, Vec<EfAlt>, Unhandled),
+    /// Do expression.
+    Do(Vec<Expr>),
+
+    /// Source span info.
+    Span(Span, P<Expr>),
+}
+
+impl Expr {
+    pub fn unit() -> Self {
+        Self::Lit(Lit::Unit)
+    }
+
+    pub fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
+    }
+}
+
+/// An alternative for a "case" expression.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Alt {
+    pub pat: Expr,
+    pub expr: Expr,
+}
+
+/// An alternative for a "handle" expression.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct EfAlt {
+    pub ef: Ef,
+    pub expr: Expr,
+    pub handler: Option<VarId>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Unhandled {
+    Bind,
+    Ignore,
 }
 
 /// A name binding.

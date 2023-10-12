@@ -284,7 +284,11 @@ peg::parser! {
             ps:params(<param()>) _ "=>" _ e:expr() { ExprKind::Lambda(ps, e) }
             --
 
-            // lowest priority right assoc. application
+            // lowest priority
+
+            // effect operator
+            "~" _ x:(@) { ExprKind::Unary(UnOp::Effect, x) }
+            // right assoc. application
             x:@ _ "$" _ y:(@) { ExprKind::Apply(x, y) }
             --
             x:(@) _ "+" _ y:@ { ExprKind::Binary(BinOp::Add, x, y) }

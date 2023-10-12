@@ -187,7 +187,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let case_t = algorithmj(ctx, e.clone(), level + 1)?;
             let mut res_t = Ty::Infer;
             let mut res_f = Ef::Infer;
-            for (p, e) in alts {
+            for (p, e) in alts.into_iter().map(|a| (a.pat, a.expr)) {
                 let vars = unify_pat(ctx, p.clone(), case_t.clone())?;
                 ctx.push_typings(vars);
                 let (e_t, e_f, _) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
@@ -198,7 +198,8 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
             TyE::new(res_t, res_f, vec![])
         }
-        Handle(box e, alts) => {
+        Handle(box e, alts, unhandled) => {
+            // handle expressions permit the binding handlers to effects.
             debug_println!(
                 "{tab}[han] solving: handle {} with \n\t{}",
                 e.pretty_string(ctx),
@@ -207,12 +208,11 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
-            // handle expressions permit the binding handlers to effects.
             let (expr_t, expr_f, expr_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
 
             let mut fs = expr_f.into_hashset();
             let mut res_t = None;
-            for (f, e) in alts {
+            for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
                     "{tab}[han] solving: {} ~> {}",
                     f.pretty_string(ctx),
