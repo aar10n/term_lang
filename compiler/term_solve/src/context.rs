@@ -1,6 +1,7 @@
 use crate::type_env::{TSet, TypeEnv};
 use crate::union_find::UnionFind;
 use term_core as core;
+use term_print::PrettyString;
 
 use core::{Constraint, Ef, Expr, MonoVarId, Span, Ty, TyE, VarId};
 
@@ -13,8 +14,8 @@ use ustr::Ustr;
 pub struct Context<'a> {
     /// Core context.
     pub ctx: &'a mut core::Context,
-    /// Type environments.
-    pub env: Vec<TypeEnv>,
+    /// Type environment.
+    pub typings: TypeEnv,
     /// The set of unsolved type variables.
     pub open: BTreeSet<MonoVarId>,
     /// Working type set.
@@ -29,7 +30,7 @@ impl<'a> Context<'a> {
     pub fn new(ctx: &'a mut core::Context) -> Self {
         Self {
             ctx,
-            env: vec![],
+            typings: TypeEnv::new(),
             open: BTreeSet::default(),
             ty_set: UnionFind::new(),
             ef_set: UnionFind::new(),
@@ -53,33 +54,6 @@ impl<'a> Context<'a> {
         let id = self.ctx.ids.next_mono_var_id();
         self.ef_set.insert(Ef::Mono(id));
         Ef::Mono(id)
-    }
-
-    /// Pushes a new assumption to the typing environment.
-    pub fn push_typing(&mut self, var: Expr, t: TyE) {
-        let e = TypeEnv::from([(var, t)]);
-        self.env.push(e);
-    }
-
-    /// Pushes a new set of assumptions to the typing environment.
-    pub fn push_typings(&mut self, typings: impl IntoIterator<Item = (Expr, TyE)>) {
-        let e = TypeEnv::from(typings);
-        self.env.push(e);
-    }
-
-    /// Drops the last pushed typings from the environment.
-    pub fn pop_typings(&mut self) -> TypeEnv {
-        assert!(!self.env.is_empty());
-        self.env.pop().unwrap()
-    }
-
-    pub fn resolve_local_var(&self, var_id: VarId) -> Option<(Expr, TyE)> {
-        for env in self.env.iter().rev() {
-            if let Some(t) = env.get(&Expr::Var(var_id)) {
-                return Some((Expr::Var(var_id), t.clone()));
-            }
-        }
-        None
     }
 }
 

@@ -164,6 +164,8 @@ pub struct EffectDecl {
     pub name: Ident,
     /// Type parameters.
     pub ty_params: TyParams,
+    /// Side effects.
+    pub side_efs: Vec<P<Ef>>,
     /// Effect operations.
     pub ops: Vec<EffectOpDecl>,
     /// Effect type span.
@@ -171,10 +173,16 @@ pub struct EffectDecl {
 }
 
 impl EffectDecl {
-    pub fn new(name: Ident, ty_params: TyParams, ops: Vec<EffectOpDecl>) -> Self {
+    pub fn new(
+        name: Ident,
+        ty_params: TyParams,
+        side_efs: Vec<P<Ef>>,
+        ops: Vec<EffectOpDecl>,
+    ) -> Self {
         Self {
             name,
             ty_params,
+            side_efs,
             ops,
             span: Span::default(),
         }
@@ -563,6 +571,8 @@ pub enum PatKind {
     Tuple(Vec<P<Pat>>),
     /// A list pattern.
     List(Vec<P<Pat>>),
+    /// A record pattern.
+    Record(Vec<(Ident, P<Pat>)>),
     /// A cons pattern.
     Cons(P<Pat>, P<Pat>),
     /// A literal pattern.

@@ -11,6 +11,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use type_env::TSet;
 
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<TyE> {
+    if level > 30 {
+        panic!();
+    }
     use self::Bind::*;
     use self::Expr::*;
     use self::Lit::*;
@@ -23,29 +26,31 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         Sym(s) => todo!(),
         Var(id) => {
             debug_println!("{tab}[var] solving: {}", id.pretty_string(ctx));
-            let (e, t) = if let Some(d) = ctx.defs.get(&id) {
-                (d.body.clone(), d.ty.clone())
+            let (e, t) = if let Some(t) = ctx.typings.get(&Expr::Var(id)).cloned() {
+                (Expr::Var(id), crate::update(ctx, t))
+            } else if let Some(d) = ctx.defs.get(&id).cloned() {
+                let t = crate::instantiate(ctx, d.ty, &mut HashMap::new());
+                ctx.typings.insert(Expr::Var(id), t.clone());
+                (d.body, t)
             } else {
-                match ctx.resolve_local_var(id) {
-                    Some((e, t)) => (e, t),
-                    None => {
-                        return if let Some(span) = ctx.id_as_span(id) {
-                            Diagnostic::error(
-                                format!("no definition found for name: {}", id.pretty_string(ctx)),
-                                span,
-                            )
-                            .into_err()
-                        } else {
-                            Err(
-                                format!("no definition found for name: {}", id.pretty_string(ctx))
-                                    .into_diagnostic(),
-                            )
-                        }
-                    }
-                }
+                println!("-------");
+                ctx.typings.print_stdout(ctx);
+                println!("-------");
+                panic!();
+                return if let Some(span) = ctx.id_as_span(id) {
+                    Diagnostic::error(
+                        format!("no definition found for name: {}", id.pretty_string(ctx)),
+                        span,
+                    )
+                    .into_err()
+                } else {
+                    Err(
+                        format!("no definition found for name: {}", id.pretty_string(ctx))
+                            .into_diagnostic(),
+                    )
+                };
             };
 
-            let t = crate::instantiate(ctx, t, &mut HashMap::new());
             if e == Var(id) || t.is_concrete() {
                 debug_println!(
                     "{tab}[var] done: {} : {}",
@@ -104,14 +109,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         Lambda(box p, box e) => {
             debug_println!(
                 "{tab}[lam] solving: λ{}.{}",
-                x.pretty_string(ctx),
+                p.pretty_string(ctx),
                 p.pretty_string(ctx)
             );
 
             let (t, vars) = solve_collect_bindings(ctx, &p)?;
-            ctx.push_typings(vars);
+            ctx.typings.push(vars);
             let (ret_t, ret_f, ret_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
-            ctx.pop_typings();
+            ctx.typings.pop();
 
             let pt = ty::update(ctx, t);
             let result = TyE::new(
@@ -136,9 +141,9 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 f.clone(),
                 vec![],
             );
-            ctx.push_typing(Expr::Var(x), ft);
+            ctx.typings.push(vec![(Expr::Var(x), ft)]);
             let u = algorithmj(ctx, e.clone(), level + 1)?;
-            ctx.pop_typings();
+            ctx.typings.pop();
 
             let t = crate::unify(ctx, t, u)?;
             let ft = TyE::new(
@@ -148,9 +153,9 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
             let mut result = t.clone();
             if let Some(box e1) = e1 {
-                ctx.push_typing(Expr::Var(x), ft);
+                ctx.typings.push(vec![(Expr::Var(x), ft)]);
                 result = algorithmj(ctx, e1.clone(), level + 1)?;
-                ctx.pop_typings();
+                ctx.typings.pop();
             }
 
             debug_println!(
@@ -167,14 +172,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 e.pretty_string(ctx)
             );
 
-            let t = algorithmj(ctx, e.clone(), level + 1)?;
-            let vars = unify_pat(ctx, p.clone(), t.clone())?;
+            let (t, vars) = solve_collect_bindings(ctx, &p)?;
+            let t = TyE::pure(t);
 
             let mut result = t.clone();
             if let Some(box e1) = e1 {
-                ctx.push_typings(vars);
+                ctx.typings.push(vars);
                 result = algorithmj(ctx, e1.clone(), level + 1)?;
-                ctx.pop_typings();
+                ctx.typings.pop();
             }
 
             debug_println!(
@@ -185,18 +190,31 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             result
         }
         Case(box e, alts) => {
+            debug_println!(
+                "{tab}[case] solving: case {} in {}",
+                e.pretty_string(ctx),
+                alts.iter()
+                    .map(|a| a.pretty_string(ctx))
+                    .collect::<Vec<_>>()
+                    .join("\n\t")
+            );
+
             let case_t = algorithmj(ctx, e.clone(), level + 1)?;
             let mut res_t = Ty::Infer;
             let mut res_f = Ef::Infer;
             for (p, e) in alts.into_iter().map(|a| (a.pat, a.expr)) {
-                let vars = unify_pat(ctx, p.clone(), case_t.clone())?;
-                ctx.push_typings(vars);
+                let (t, vars) = solve_collect_bindings(ctx, &p)?;
+                crate::unify(ctx, case_t.clone(), TyE::pure(t))?;
+
+                ctx.typings.push(vars);
                 let (e_t, e_f, _) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
-                ctx.pop_typings();
+                ctx.typings.pop();
 
                 res_t = ty::unify(ctx, res_t, e_t)?;
                 res_f = res_f | e_f;
             }
+
+            debug_println!("{tab}[case] done: {}", res_t.pretty_string(ctx));
             TyE::new(res_t, res_f, vec![])
         }
         Handle(box e, alts) => {
@@ -338,33 +356,5 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
             format!("invalid effect pattern: `{}`", f.pretty_string(ctx)).into_err()?
         }
         _ => return format!("expected effect, found `{}`", f.pretty_string(ctx)).into_err(),
-    })
-}
-
-pub fn unify_pat(ctx: &mut Context<'_>, p: Expr, t: TyE) -> diag::Result<Vec<(Expr, TyE)>> {
-    use Expr::*;
-    use Ty::*;
-
-    let (t, f, cs) = t.into_tuple();
-    let cs = crate::solve_constraints(ctx, cs)?;
-    Ok(match (p, t) {
-        (Lit(l), t) => {
-            ty::unify(ctx, t, l.as_ty())?;
-            vec![]
-        }
-        (Var(x), t) => vec![(Var(x), TyE::new(t, f, cs))],
-        (Span(_, box e), t) => unify_pat(ctx, e, TyE::new(t, f, cs))?,
-        (p, t) => {
-            // ctx.ty_set.print_stdout(ctx);
-            // println!("-----");
-            return format!(
-                "pattern `{}` ({:?}) does not match type `{}` ({:?})",
-                p.pretty_string(ctx),
-                p,
-                t.pretty_string(ctx),
-                t,
-            )
-            .into_err();
-        }
     })
 }

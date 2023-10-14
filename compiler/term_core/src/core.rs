@@ -130,12 +130,12 @@ pub enum Ty {
     Mono(MonoVarId),
     /// Poly type variable.
     Poly(PolyVarId),
+    /// Recursive
+    Rec(MonoVarId, P<TyE>),
     /// A data type.
     Data(DataId, Vec<TyE>),
     /// Function type (A -> B).
     Func(P<TyE>, P<TyE>),
-    /// Sum type (A + B). invariant: len >= 2
-    Sum(Vec<TyE>),
     /// Record type ({a: A, b: B}). invariant: len >= 1
     Record(BTreeMap<Ustr, TyE>),
     /// Effectful type (t ~ e).
@@ -149,10 +149,9 @@ impl Ty {
 
     pub fn is_concrete(&self) -> bool {
         match self {
-            Self::Infer | Self::Mono(_) | Self::Poly(_) => false,
+            Self::Infer | Self::Mono(_) | Self::Poly(_) | Self::Rec(..) => false,
             Self::Data(_, ts) => ts.iter().all(|t| t.is_concrete()),
             Self::Func(box a, box b) => a.is_concrete() && b.is_concrete(),
-            Self::Sum(ts) => ts.iter().all(|t| t.is_concrete()),
             Self::Record(fs) => fs.values().all(|t| t.is_concrete()),
             Self::Effectful(box t, _) => t.is_concrete(),
             _ => true,
@@ -161,9 +160,9 @@ impl Ty {
 
     pub fn has_effect(&self) -> bool {
         match self {
+            Self::Rec(_, t) => t.has_effect(),
             Self::Data(_, ts) => ts.iter().any(|t| t.has_effect()),
             Self::Func(a, b) => a.has_effect() || b.has_effect(),
-            Self::Sum(ts) => ts.iter().any(|t| t.has_effect()),
             Self::Record(fs) => fs.values().any(|t| t.has_effect()),
             Self::Effectful(_, _) => true,
             _ => false,
@@ -440,6 +439,8 @@ pub struct Effect {
     pub params: Vec<PolyVarId>,
     /// Constraints
     pub constraints: Vec<Constraint>,
+    /// Combining effects
+    pub combining_efs: Vec<Ef>,
     /// Effect type operations.
     pub ops: Vec<EffectOp>,
     /// Type of a handler for this effect.

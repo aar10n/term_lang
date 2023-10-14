@@ -13,22 +13,22 @@ use term_print::{
 
 use std::io;
 
-impl<'a, T: PrettyPrint<Context<'a>>> PrettyPrint<Context<'a>> for Node<T> {
+impl<T: PrettyPrint<Context>> PrettyPrint<Context> for Node<T> {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         self.kind.pretty_print(out, ctx, level)
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Module {
+impl PrettyPrint<Context> for Module {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -37,11 +37,11 @@ impl<'a> PrettyPrint<Context<'a>> for Module {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for ItemKind {
+impl PrettyPrint<Context> for ItemKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -83,11 +83,11 @@ impl<'a> PrettyPrint<Context<'a>> for ItemKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for TyKind {
+impl PrettyPrint<Context> for TyKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -192,11 +192,11 @@ impl<'a> PrettyPrint<Context<'a>> for TyKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for EfKind {
+impl PrettyPrint<Context> for EfKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         match self {
@@ -219,11 +219,11 @@ impl<'a> PrettyPrint<Context<'a>> for EfKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for DataDecl {
+impl PrettyPrint<Context> for DataDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -239,11 +239,11 @@ impl<'a> PrettyPrint<Context<'a>> for DataDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for DataConDecl {
+impl PrettyPrint<Context> for DataConDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         let var_id = ctx.con_var_ids[&self.name.id.unwrap().data_con_id()];
@@ -263,11 +263,11 @@ impl<'a> PrettyPrint<Context<'a>> for DataConDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for EffectDecl {
+impl PrettyPrint<Context> for EffectDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -277,17 +277,24 @@ impl<'a> PrettyPrint<Context<'a>> for EffectDecl {
             self.name.pretty_string(ctx)
         )?;
         self.ty_params.pretty_print(out, ctx, level)?;
+        if !self.side_efs.is_empty() {
+            writeln!(
+                out,
+                "{tab}{ATTR}effects:{RESET} {}",
+                format_list(ctx, DELIM_COMMA, &self.side_efs)
+            )?;
+        }
         writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
         write_bulleted(out, ctx, &self.ops, level + 1)?;
         Ok(())
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for EffectOpDecl {
+impl PrettyPrint<Context> for EffectOpDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         write!(out, "{} {COLON} ", self.name.pretty_string(ctx))?;
@@ -296,11 +303,11 @@ impl<'a> PrettyPrint<Context<'a>> for EffectOpDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for EffectHandler {
+impl PrettyPrint<Context> for EffectHandler {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -321,11 +328,11 @@ impl<'a> PrettyPrint<Context<'a>> for EffectHandler {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for EffectOpImpl {
+impl PrettyPrint<Context> for EffectOpImpl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -345,11 +352,11 @@ impl<'a> PrettyPrint<Context<'a>> for EffectOpImpl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for ClassDecl {
+impl PrettyPrint<Context> for ClassDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -365,11 +372,11 @@ impl<'a> PrettyPrint<Context<'a>> for ClassDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for MemberDeclKind {
+impl PrettyPrint<Context> for MemberDeclKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -385,11 +392,11 @@ impl<'a> PrettyPrint<Context<'a>> for MemberDeclKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for MethodDecl {
+impl PrettyPrint<Context> for MethodDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -403,11 +410,11 @@ impl<'a> PrettyPrint<Context<'a>> for MethodDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for ClassInst {
+impl PrettyPrint<Context> for ClassInst {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -423,11 +430,11 @@ impl<'a> PrettyPrint<Context<'a>> for ClassInst {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for MemberImplKind {
+impl PrettyPrint<Context> for MemberImplKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -446,11 +453,11 @@ impl<'a> PrettyPrint<Context<'a>> for MemberImplKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for MethodImpl {
+impl PrettyPrint<Context> for MethodImpl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -470,11 +477,11 @@ impl<'a> PrettyPrint<Context<'a>> for MethodImpl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for VarDecl {
+impl PrettyPrint<Context> for VarDecl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -489,7 +496,7 @@ impl<'a> PrettyPrint<Context<'a>> for VarDecl {
                 writeln!(
                     out,
                     "{tab}{TABWIDTH}{ATTR}var_id:{RESET} {}<{}>",
-                    var_id.pretty_string(ctx),
+                    var_id.pretty_string(&mut term_core::Context::new()),
                     var_id.raw
                 )?;
             }
@@ -499,11 +506,11 @@ impl<'a> PrettyPrint<Context<'a>> for VarDecl {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for TyParams {
+impl PrettyPrint<Context> for TyParams {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -525,11 +532,11 @@ impl<'a> PrettyPrint<Context<'a>> for TyParams {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for TyArgs {
+impl PrettyPrint<Context> for TyArgs {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -558,11 +565,11 @@ impl<'a> PrettyPrint<Context<'a>> for TyArgs {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for ConstraintKind {
+impl PrettyPrint<Context> for ConstraintKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         match self {
@@ -582,22 +589,22 @@ impl<'a> PrettyPrint<Context<'a>> for ConstraintKind {
     }
 }
 
-// impl<'a> PrettyPrint<Context<'a>> for Expr {
+// impl<> PrettyPrint<Context> for Expr {
 //     fn pretty_print<Output: io::Write>(
 //         &self,
 //         out: &mut Output,
-//         ctx: &Context<'a>,
+//         ctx: &Context,
 //         level: usize,
 //     ) -> io::Result<()> {
 //         self.kind.pretty_print(out, ctx, level)
 //     }
 // }
 
-impl<'a> PrettyPrint<Context<'a>> for ExprKind {
+impl PrettyPrint<Context> for ExprKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -683,11 +690,11 @@ impl<'a> PrettyPrint<Context<'a>> for ExprKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for PatKind {
+impl PrettyPrint<Context> for PatKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         match self {
@@ -712,6 +719,17 @@ impl<'a> PrettyPrint<Context<'a>> for PatKind {
                 pats.pretty_print(out, ctx, 0)?;
                 write!(out, "{RBRAC}")
             }
+            PatKind::Record(fields) => {
+                write!(out, "{LBRACE}")?;
+                for (i, (n, pat)) in fields.iter().enumerate() {
+                    if i > 0 {
+                        write!(out, " ")?;
+                    }
+                    write!(out, "{} {COLON} ", n.pretty_string(ctx))?;
+                    pat.pretty_print(out, ctx, 0)?;
+                }
+                write!(out, "{RBRACE}")
+            }
             PatKind::Cons(head, tail) => {
                 head.pretty_print(out, ctx, 0)?;
                 write!(out, " {PUNCT}:{RESET} ")?;
@@ -723,11 +741,11 @@ impl<'a> PrettyPrint<Context<'a>> for PatKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Case {
+impl PrettyPrint<Context> for Case {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -739,11 +757,11 @@ impl<'a> PrettyPrint<Context<'a>> for Case {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for CaseAlt {
+impl PrettyPrint<Context> for CaseAlt {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -757,11 +775,11 @@ impl<'a> PrettyPrint<Context<'a>> for CaseAlt {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Handle {
+impl PrettyPrint<Context> for Handle {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -773,11 +791,11 @@ impl<'a> PrettyPrint<Context<'a>> for Handle {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for HandleAlt {
+impl PrettyPrint<Context> for HandleAlt {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
@@ -787,22 +805,22 @@ impl<'a> PrettyPrint<Context<'a>> for HandleAlt {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Do {
+impl PrettyPrint<Context> for Do {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         level: usize,
     ) -> io::Result<()> {
         write_bulleted(out, ctx, &self.exprs, level)
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for If {
+impl PrettyPrint<Context> for If {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         writeln!(out, "{ATTR}cond:{RESET}")?;
@@ -814,11 +832,11 @@ impl<'a> PrettyPrint<Context<'a>> for If {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for LitKind {
+impl PrettyPrint<Context> for LitKind {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         match self {
@@ -832,11 +850,11 @@ impl<'a> PrettyPrint<Context<'a>> for LitKind {
     }
 }
 
-impl<'a> PrettyPrint<Context<'a>> for Ident {
+impl PrettyPrint<Context> for Ident {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
-        ctx: &Context<'a>,
+        ctx: &Context,
         _: usize,
     ) -> io::Result<()> {
         if let Some(id) = self.id {

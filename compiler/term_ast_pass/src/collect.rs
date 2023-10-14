@@ -33,8 +33,8 @@ impl<'v, 'ast> CollectVisitor<'v, 'ast> {
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
-    fn context(&mut self) -> &mut Context<'ast> {
-        self.ctx
+    fn context(&mut self) -> &mut ast::Context {
+        self.ctx.ast
     }
     fn push_scope(&mut self) {
         self.level += 1
@@ -56,7 +56,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
                     Left(decl) => Rc::new(RefCell::new(decl)),
                     Right(_) => unreachable!(),
                 };
-                self.ctx.decls.insert(id, decl);
+                self.ctx.ast.decls.insert(id, decl);
             }
             _ => {}
         }
@@ -104,7 +104,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         // will become associated with a constructor function used in type checking.
         let var_id = self.ctx.ids.next_var_id();
         self.ctx.register_id_name(var_id, name, span);
-        self.ctx.con_var_ids.insert(id, var_id);
+        self.ctx.ast.con_var_ids.insert(id, var_id);
 
         con.name.id = Some(id.into());
         con.fields.visit(self)
@@ -127,6 +127,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         self.scope_id = Some(id.into());
         effect.name.id = Some(id.into());
         effect.ty_params.visit(self)?;
+        effect.side_efs.visit(self)?;
         effect.ops.visit(self)?;
         self.scope_id = None;
         Ok(())
@@ -153,7 +154,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         // register and associate variable id with this operation.
         let var_id = self.ctx.ids.next_var_id();
         self.ctx.register_id_name(var_id, name, span);
-        self.ctx.op_var_ids.insert(op_id, var_id);
+        self.ctx.ast.op_var_ids.insert(op_id, var_id);
 
         if let Err(existing_id) = self.ctx.register_global_name(var_id, name, span) {
             return DuplicateDeclErr {
@@ -185,7 +186,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         // register variable associated with handler
         let var_id = self.ctx.ids.next_var_id();
         self.ctx.register_id_name(var_id, name, span);
-        self.ctx.handler_var_ids.insert(id, var_id);
+        self.ctx.ast.handler_var_ids.insert(id, var_id);
 
         self.scope_id = Some(id.into());
         handler.name.id = Some(id.into());
@@ -261,7 +262,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             Ok(_) => {}
         };
 
-        self.ctx.ambiguous_names.insert(name);
+        self.ctx.ast.ambiguous_names.insert(name);
         self.all_decls.insert(name, (id, method.span()));
 
         method.name.id = Some(id.into());
@@ -271,7 +272,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
         let id = self.ctx.ids.next_inst_id();
-        let name = ustr(&inst.ty_args.args.plain_string(&self.ctx));
+        let name = ustr(&inst.ty_args.args.plain_string(&self.ctx.ast));
         let span = inst.span();
         self.ctx.register_id_name(id, name, span);
 
@@ -338,8 +339,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             // create a variable id associated with the declaration to use in resolution
             let var_id = self.ctx.ids.next_var_id();
             self.ctx.register_global_name(var_id, name, span).unwrap();
-            self.ctx.decl_var_ids.insert(id, var_id);
-            self.ctx.var_decl_ids.insert(var_id, id);
+            self.ctx.ast.decl_var_ids.insert(id, var_id);
+            self.ctx.ast.var_decl_ids.insert(var_id, id);
         }
 
         var.name.id = Some(id.into());
@@ -378,7 +379,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
         // check if there is a declaration
         if let Some((decl_id, span)) = self.all_decls.get(&name) {
             // check if declared variable is redefined
-            if let Some(var_id) = self.ctx.decl_var_ids.insert(*decl_id, id) {
+            if let Some(var_id) = self.ctx.ast.decl_var_ids.insert(*decl_id, id) {
                 return DuplicateDeclErr {
                     kind: "variable",
                     span: ident.span(),
@@ -386,7 +387,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
                 }
                 .into_err();
             }
-            self.ctx.var_decl_ids.insert(id, *decl_id);
+            self.ctx.ast.var_decl_ids.insert(id, *decl_id);
         }
 
         params.visit(self)?;

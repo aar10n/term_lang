@@ -27,8 +27,8 @@ impl<'v, 'ast> LowerExprVisitor<'v, 'ast> {
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
-    fn context(&mut self) -> &mut Context<'ast> {
-        self.ctx
+    fn context(&mut self) -> &mut ast::Context {
+        self.ctx.ast
     }
 
     fn visit_func(
@@ -37,25 +37,31 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
         params: &mut Vec<P<Pat>>,
         body: &mut P<Expr>,
     ) -> diag::Result<()> {
+        self.ctx.solve.typings.push_empty();
         let id = ident.id.unwrap().var_id();
         let body = lower::lower_lambda(&mut self.ctx, params, body)?;
+
+        let ut = {
+            let a = TyE::pure(self.ctx.solve.new_ty_var());
+            let b = TyE::pure(self.ctx.solve.new_ty_var());
+            let f = self.ctx.solve.new_ef_var();
+            TyE::pure_func(a, b).with_ef(f)
+        };
+        self.ctx.solve.typings.insert(core::Expr::Var(id), ut);
+
         println!("inferring type of : {}", id.pretty_string(self.ctx));
+        // panic!();
         println!("{}", body.pretty_string(self.ctx));
-        let ty = solve::infer(&mut self.ctx, &body)?;
-        let t = lower::cannonical_ty(self.ctx, ty);
-        println!("type inferred to be: {}", t.pretty_string(self.ctx));
 
-        // let ty = if let Some(decl_id) = self.ctx.var_decl_ids.get(&id) {
-        //     let decl = self.ctx.decls[decl_id].clone();
-        //     let decl = decl.borrow();
+        let ty = solve::infer_partial(&mut self.ctx.solve, &body)?;
+        let ty = solve::generalize(&mut self.ctx.solve, ty, &mut Default::default());
+        // let ty = solve::infer_recursive(&mut self.ctx.solve, id, &body)?;
+        let ty = lower::fix_ty(self.ctx, ty);
 
-        //     decl.ty.lower(&mut self.ctx)?
-        // } else {
-        //     TyE::infer()
-        // };
-
-        // let def = core::Def::new(id, ty, body);
-        // self.ctx.defs.insert(id, def);
+        println!("type inferred to be: {}", ty.pretty_string(self.ctx));
+        let def = core::Def::new(id, ty, body);
+        self.ctx.defs.insert(id, def);
+        self.ctx.solve.typings.pop();
         Ok(())
     }
 }

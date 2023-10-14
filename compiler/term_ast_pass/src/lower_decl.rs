@@ -38,8 +38,8 @@ impl<'v, 'ast> LowerDeclVisitor<'v, 'ast> {
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
-    fn context(&mut self) -> &mut Context<'ast> {
-        self.ctx
+    fn context(&mut self) -> &mut ast::Context {
+        self.ctx.ast
     }
 
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
@@ -67,8 +67,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
-        if let Some(builtin) = var.lower(&mut self.ctx)? {
-            self.register_defs(vec![builtin]);
+        println!("lowering var decl: {}", var.pretty_string(self.ctx.ast));
+        if let Some(def) = var.lower(&mut self.ctx)? {
+            self.register_defs(vec![def]);
         }
         Ok(())
     }

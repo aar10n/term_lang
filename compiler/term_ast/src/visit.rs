@@ -18,7 +18,7 @@ macro_rules! scoped {
 
 /// A visitor for AST nodes.
 pub trait Visitor<'a, S: Default, E>: Sized {
-    fn context(&mut self) -> &mut Context<'a>;
+    fn context(&mut self) -> &mut Context;
     fn push_scope(&mut self) {}
     fn pop_scope(&mut self) {}
 
@@ -141,8 +141,11 @@ pub trait Visitor<'a, S: Default, E>: Sized {
         fields.visit(self)
     }
     fn visit_record_field(&mut self, field: &mut (Ident, P<Expr>)) -> Result<S, E> {
-        self.visit_var_ident(&mut field.0)?;
+        self.visit_record_key(&mut field.0)?;
         field.1.visit(self)
+    }
+    fn visit_record_key(&mut self, key: &mut Ident) -> Result<S, E> {
+        Ok(S::default())
     }
     fn visit_lit(&mut self, lit: &mut Lit) -> Result<S, E> {
         Ok(S::default())
@@ -355,6 +358,7 @@ impl Visit for EffectDecl {
         visitor.visit_effect_ident(&mut self.name)?;
         scoped! {visitor,
             self.ty_params.visit(visitor)?;
+            self.side_efs.visit(visitor)?;
             self.ops.visit(visitor)
         }
     }
@@ -586,6 +590,13 @@ impl Visit for Pat {
             }
             PatKind::Tuple(pats) => pats.visit(visitor),
             PatKind::List(pats) => pats.visit(visitor),
+            PatKind::Record(fields) => {
+                for (name, value) in fields {
+                    visitor.visit_record_key(name)?;
+                    value.visit(visitor)?;
+                }
+                Ok(S::default())
+            }
             PatKind::Cons(head, tail) => {
                 head.visit(visitor)?;
                 tail.visit(visitor)

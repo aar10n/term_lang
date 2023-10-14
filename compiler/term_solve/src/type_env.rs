@@ -13,37 +13,62 @@ use std::ops::{BitOr, Deref, DerefMut};
 /// A type environment.
 #[derive(Clone, Debug)]
 pub struct TypeEnv {
-    pub map: HashMap<Expr, TyE>,
+    pub stack: Vec<HashMap<Expr, TyE>>,
 }
 
 impl TypeEnv {
     pub fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            stack: vec![HashMap::new()],
         }
     }
 
-    pub fn from_typings<I>(typings: I) -> Self
-    where
-        I: IntoIterator<Item = (Expr, TyE)>,
-    {
+    pub fn from_typings(typings: impl IntoIterator<Item = (Expr, TyE)>) -> Self {
         let mut map = HashMap::new();
         map.extend(typings);
-        Self { map }
+        Self { stack: vec![map] }
     }
-}
 
-impl Deref for TypeEnv {
-    type Target = HashMap<Expr, TyE>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.map
+    pub fn is_empty(&self) -> bool {
+        self.stack.is_empty() || self.stack.last().unwrap().is_empty()
     }
-}
 
-impl DerefMut for TypeEnv {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.map
+    pub fn get(&self, var: &Expr) -> Option<&TyE> {
+        for map in self.stack.iter().rev() {
+            if let Some(t) = map.get(var) {
+                return Some(t);
+            }
+        }
+        None
+    }
+
+    pub fn get_mut(&mut self, var: &Expr) -> Option<&mut TyE> {
+        for map in self.stack.iter_mut().rev() {
+            if let Some(t) = map.get_mut(var) {
+                return Some(t);
+            }
+        }
+        None
+    }
+
+    pub fn insert(&mut self, var: Expr, t: TyE) {
+        self.stack.last_mut().unwrap().insert(var, t);
+    }
+
+    pub fn push_empty(&mut self) {
+        self.stack.push(HashMap::new());
+    }
+
+    pub fn push(&mut self, tys: impl IntoIterator<Item = (Expr, TyE)>) {
+        let mut map = HashMap::new();
+        map.extend(tys);
+        self.stack.push(map);
+    }
+
+    pub fn pop(&mut self) -> Self {
+        Self {
+            stack: vec![self.stack.pop().unwrap()],
+        }
     }
 }
 

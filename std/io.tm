@@ -1,8 +1,6 @@
 panic : a -> never
-println : String -> () ~ IO
-builtin_put_char : Char -> ()
-builtin_get_char : () -> Char
-
+builtin_put_char : Char -> () ~ Except'IOError
+builtin_get_char : () -> Char ~ Except'IOError
 
 data List : a =
     | Nil
@@ -13,35 +11,32 @@ effect Except : e
     | raise : e -> ()
     ;
 
-effect IO
+default handler unhandled_exception for Except'e
+    | raise = panic
+    ;
+
+
+data IOError = IOError { msg : String };
+
+# you can specify a list of side effects after a `~` which may occur in handlers of the effect
+effect IO ~ Except'IOError
     | read_char : () -> Char
     | write_char : Char -> ()
     ;
-
-data IOError = IOError { msg : String };
 
 default handler stdio for IO
     | read_char = builtin_get_char
     | write_char = builtin_put_char
     ;
 
+# println : String -> () ~ IO
+println s = handle case s
+    | [] -> write_char '\n'
+    | x:xs -> write_char x; println xs
+    ;
+    | Except'IOError ~> unhandled_exception
+    ;
 
 # the effect operator `~` binds default handers to effects in the applied expression
 foo () = println "hi"
 bar () = ~println "hi"
-
-#bar () k = do
-#    | x = handle (println "hi")
-#        | IO ~> stdio
-#        ;
-#    | k x
-#    ;
-
-#test () k = do
-#    | handle (println "hi")
-#        | Except'IOError ~> 
-#        | IO ~> 
-#        | k 1
-#        ;
-#    |
-#    ;

@@ -217,6 +217,7 @@ peg::parser! {
             s:position!() k:@ e:position!() { Box::new(Pat::new(k, Span::new(source_id, s, e))) }
             --
 
+            // unit pattern
             "(" _ ")" { PatKind::Unit }
             // parenthesized pattern `(a)`
             "(" p:pat() ")" { (*p).kind }
@@ -224,6 +225,11 @@ peg::parser! {
             "(" ps:((_ p:pat() _ {p}) ++ ",") ")" { PatKind::Tuple(ps) }
             // list pattern `[a, b, c]`
             "[" _ ps:((_ p:pat() _ {p}) ** ",") "]" { PatKind::List(ps) }
+            // record pattern `{a: A, b: B}`
+            "{" fs:((___ n:ident() _ "=" _ p:pat() ___ { (n, p) }) ** ",") "}" { PatKind::Record(fs) }
+            // cons pattern `a:b`
+            a:@ _ ":" _ b:(@) { PatKind::Cons(a, b) }
+
             // data constructor pattern `Cons a b`
             c:ty_ident_upper() !ident_char_start() ps:((_ p:pat() {p}) ++ __) { PatKind::DataCon(c, ps) }
             c:ty_ident_upper() !ident_char_start() { PatKind::DataCon(c, vec![]) }
@@ -266,6 +272,9 @@ peg::parser! {
         #[cache_left_rec]
         pub rule expr() -> P<Expr> = precedence!{
             s:position!() n:@ e:position!() { Box::new(Expr::new(n, Span::new(source_id, s, e))) }
+            --
+
+            x:@ _ ";" _ y:(@) { ExprKind::Do(Do::new(vec![x, y])) }
             --
 
             // case expression
@@ -348,10 +357,13 @@ peg::parser! {
         rule effect_op_decl() -> EffectOpDecl =
             span(<n:ident() _ ":" _ t:ty() { EffectOpDecl::new(n, t) }>)
 
+        rule side_effects() -> Vec<P<Ef>> =
+            es:("~" _ es:((_ e:ef() {e}) ** __) {es})? {es.unwrap_or(vec![])}
+
         pub rule effect_decl() -> EffectDecl = span(<
-            kw(<"effect">) _ n:ty_ident() _ ps:ty_params() _ eol()
+            kw(<"effect">) _ n:ty_ident() _ efs:side_effects() _ ps:ty_params() _ eol()
             ops:multiline(<effect_op_decl()>) {
-                EffectDecl::new(n, ps, ops)
+                EffectDecl::new(n, ps, efs, ops)
             }
         >)
 

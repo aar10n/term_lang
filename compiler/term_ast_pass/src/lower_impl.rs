@@ -38,8 +38,8 @@ impl<'v, 'ast> LowerImplVisitor<'v, 'ast> {
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
-    fn context(&mut self) -> &mut Context<'ast> {
-        self.ctx
+    fn context(&mut self) -> &mut ast::Context {
+        self.ctx.ast
     }
 
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {

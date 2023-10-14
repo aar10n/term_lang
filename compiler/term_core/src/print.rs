@@ -63,6 +63,10 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                     write!(out, "{MAGENTA}{}{RESET}", name)
                 }
             }
+            Ty::Rec(id, t) => {
+                write!(out, "{BLUE}μ{GREEN}{}{RESET}{PERIOD}", ctx.id_as_str(*id))?;
+                t.pretty_print(out, ctx, 0)
+            }
             Ty::Data(id, ts) => {
                 write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id))?;
                 write_args_list(out, ctx, ts, QUOTE, " ")
@@ -79,7 +83,6 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                 write!(out, " {ARROW} ")?;
                 b.pretty_print(out, ctx, 0)
             }
-            Ty::Sum(ts) => write_list(out, ctx, PLUS_SEP, ts),
             Ty::Record(fields) => {
                 write!(out, "{LBRACE}")?;
                 let mut fields = fields.iter().peekable();
@@ -408,6 +411,11 @@ impl PrettyPrint<Context> for Effect {
         if !self.constraints.is_empty() {
             write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
             write_list(out, ctx, ", ", &self.constraints)?;
+            writeln!(out)?;
+        }
+        if !self.combining_efs.is_empty() {
+            write!(out, "{ttab}{ATTR}combining:{RESET} ")?;
+            write_list(out, ctx, ", ", &self.combining_efs)?;
             writeln!(out)?;
         }
         writeln!(out, "{ttab}{ATTR}ops:{RESET}")?;

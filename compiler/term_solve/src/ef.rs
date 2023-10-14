@@ -21,6 +21,7 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
     use Ef::*;
     Ok(match (f1, f2) {
         (Pure, Pure) => Pure,
+        (Pure, f) => f,
         (Infer, f) | (f, Infer) => f,
         (f, Mono(x)) | (Mono(x), f) => {
             let f = ctx.ef_set.find(f);
@@ -71,7 +72,7 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
             println!("--");
             ctx.ef_set.print_stdout(ctx);
             println!("-----");
-            panic!();
+            // panic!();
             return Err(format!(
                 "expected effect `{}`, found `{}`",
                 f1.pretty_string(ctx),
@@ -159,7 +160,9 @@ pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
             Effect(id, ts)
         }
         Union(mut fs) => {
-            if fs.iter().all(|f| matches!(f, Mono(_))) {
+            if fs.is_empty() {
+                return Ef::Pure;
+            } else if fs.iter().all(|f| matches!(f, Mono(_))) {
                 let mut f = fs.first().unwrap().clone();
                 for f2 in fs.into_iter().skip(1) {
                     f = ctx.ef_set.union(f, f2);

@@ -3,6 +3,7 @@
 #![feature(let_chains)]
 #![feature(box_patterns)]
 mod collect;
+mod context;
 pub mod lower;
 mod lower_decl;
 mod lower_expr;
@@ -17,8 +18,8 @@ use ast::{Module, Span};
 use diag::{Diagnostic, IntoDiagnostic, Report};
 use ustr::Ustr;
 
-pub use ast::Context;
 pub use collect::*;
+pub use context::*;
 pub use lower_decl::*;
 pub use lower_expr::*;
 pub use lower_impl::*;

@@ -21,14 +21,15 @@ pub fn new_context() -> Context {
     let mut ctx = Context::new();
 
     ctx.register_builtin("panic");
-    ctx.register_builtin("println");
     ctx.register_builtin("builtin_put_char");
     ctx.register_builtin("builtin_get_char");
     ctx
 }
 
-pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
-    let mut ctx = ast::Context::new(ctx);
+pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
+    let mut ast = ast::Context::new();
+    let mut ctx = pass::Context::new(&mut ast, core);
+
     let file = ctx.sources.get(source_id).unwrap();
     let mut module = parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
 
@@ -37,7 +38,7 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         return Err(Report::from(errs));
     }
 
-    module.print_stdout(&ctx);
+    module.print_stdout(&ctx.ast);
 
     let pass2 = compose![pass::lower_decls, pass::lower_impls];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, pass2) {

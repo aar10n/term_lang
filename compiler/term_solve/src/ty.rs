@@ -21,7 +21,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
     use Ty::*;
     Ok(match (t1, t2) {
         (Infer, t) | (t, Infer) => t,
-        (Never, Never) => Never,
+        (Never, t) => t,
         (Unit, Unit) => Unit,
         (Symbol(x), Symbol(y)) if x == y => Symbol(x),
         (t, Mono(x)) | (Mono(x), t) => {
@@ -48,6 +48,10 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
             // );
             result
         }
+        (Rec(id1, box t1), Rec(id2, box t2)) if id1 == id2 => {
+            let t = crate::unify(ctx, t1, t2)?;
+            Rec(id1, t.into())
+        }
         (Data(id1, ts1), Data(id2, ts2)) if id1 == id2 => {
             if ts1.len() != ts2.len() {
                 return Err(format!(
@@ -69,23 +73,6 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
             let t1 = crate::unify(ctx, t1, t3)?;
             let t2 = crate::unify(ctx, t2, t4)?;
             Func(t1.into(), t2.into())
-        }
-        (Sum(ts1), Sum(ts2)) => {
-            if ts1.len() != ts2.len() {
-                return Err(format!(
-                    "cannot unify sum types of different lengths: {} and {}",
-                    ts1.len(),
-                    ts2.len()
-                )
-                .into_diagnostic());
-            }
-
-            let ts = ts1
-                .into_iter()
-                .zip(ts2.into_iter())
-                .map(|(t1, t2)| crate::unify(ctx, t1, t2))
-                .collect::<Result<Vec<_>, _>>()?;
-            Sum(ts)
         }
         (Record(fds1), Record(fds2)) => {
             let mut fields = BTreeMap::new();
@@ -124,9 +111,9 @@ pub fn update(ctx: &mut Context<'_>, t: Ty) -> Ty {
     use Ty::*;
     match t {
         Mono(x) => ctx.ty_set.find(Mono(x)),
+        Rec(id, box t) => Rec(id, crate::update(ctx, t).into()),
         Data(id, ts) => Data(id, ts.into_iter().map(|t| crate::update(ctx, t)).collect()),
         Func(box t1, box t2) => Func(crate::update(ctx, t1).into(), crate::update(ctx, t2).into()),
-        Sum(ts) => Sum(ts.into_iter().map(|t| crate::update(ctx, t)).collect()),
         Record(fields) => Record(
             fields
                 .into_iter()
@@ -152,6 +139,10 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
                 TyE::pure(t)
             }
         },
+        Rec(id, box t) => {
+            let t = crate::instantiate(ctx, t, ps);
+            TyE::pure(Rec(id, t.into()))
+        }
         Data(id, ts) => {
             let ts = ts
                 .into_iter()
@@ -163,13 +154,6 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
             let t1 = crate::instantiate(ctx, t1, ps);
             let t2 = crate::instantiate(ctx, t2, ps);
             TyE::pure(Func(t1.into(), t2.into()))
-        }
-        Sum(ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::instantiate(ctx, t, ps))
-                .collect();
-            TyE::pure(Sum(ts))
         }
         Record(fields) => {
             let fields = fields
@@ -199,6 +183,10 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
                 TyE::pure(Ty::Poly(t))
             }
         },
+        Rec(id, box t) => {
+            let t = crate::generalize(ctx, t, ps);
+            TyE::pure(Rec(id, t.into()))
+        }
         Data(id, ts) => {
             let ts = ts
                 .into_iter()
@@ -210,13 +198,6 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
             let t1 = crate::generalize(ctx, t1, ps);
             let t2 = crate::generalize(ctx, t2, ps);
             TyE::pure(Func(t1.into(), t2.into()))
-        }
-        Sum(ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::generalize(ctx, t, ps))
-                .collect();
-            TyE::pure(Sum(ts))
         }
         Record(fields) => {
             let fields = fields
@@ -237,6 +218,10 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
 pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
     use Ty::*;
     match t {
+        Rec(id, box t) => {
+            let t = crate::cannonicalize(ctx, t);
+            TyE::pure(Rec(id, t.into()))
+        }
         Data(id, ts) => {
             let (ts, f, cs) =
                 ts.into_iter()
@@ -257,13 +242,6 @@ pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
                 f1 | f2,
                 cs,
             )
-        }
-        Sum(ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::cannonicalize(ctx, t))
-                .collect();
-            TyE::pure(Sum(ts))
         }
         Record(fields) => {
             let fields = fields
@@ -288,9 +266,9 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 
     use Ty::*;
     match t {
+        Rec(_, box t) => crate::ty_occurs(x, t),
         Data(_, ts) => ts.iter().any(|t| crate::ty_occurs(x, t)),
         Func(box t1, box t2) => crate::ty_occurs(x, &t1) || crate::ty_occurs(x, &t2),
-        Sum(ts) => ts.iter().any(|t| crate::ty_occurs(x, t)),
         Record(fields) => fields.values().any(|v| crate::ty_occurs(x, &v)),
         Effectful(box t, f) => ty_occurs(x, t) || ef::ty_occurs(x, f),
         _ => false,
@@ -300,9 +278,9 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 pub fn ef_occurs(x: &Ef, t: &Ty) -> bool {
     use Ty::*;
     match t {
+        Rec(_, box t) => crate::ef_occurs(x, t),
         Data(_, ts) => ts.iter().any(|t| crate::ef_occurs(x, t)),
         Func(box t1, box t2) => crate::ef_occurs(x, &t1) || crate::ef_occurs(x, &t2),
-        Sum(ts) => ts.iter().any(|t| crate::ef_occurs(x, t)),
         Record(fields) => fields.values().any(|v| crate::ef_occurs(x, &v)),
         Effectful(box t, f) => ef::ef_occurs(x, f),
         _ => false,
@@ -316,6 +294,7 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
 
     use Ty::*;
     match t {
+        Rec(id, box t) => Rec(id, crate::subst_ty(r, x, t).into()),
         Data(id, ts) => Data(
             id,
             ts.into_iter().map(|t| crate::subst_ty(r, x, t)).collect(),
@@ -324,7 +303,6 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
             crate::subst_ty(r, x, t1).into(),
             crate::subst_ty(r, x, t2).into(),
         ),
-        Sum(ts) => Sum(ts.into_iter().map(|t| crate::subst_ty(r, x, t)).collect()),
         Record(fields) => Record(
             fields
                 .into_iter()
@@ -347,7 +325,6 @@ pub fn subst_ef(r: &Ef, x: &Ef, t: Ty) -> Ty {
             crate::subst_ef(r, x, t1).into(),
             crate::subst_ef(r, x, t2).into(),
         ),
-        Sum(ts) => Sum(ts.into_iter().map(|t| crate::subst_ef(r, x, t)).collect()),
         Record(fields) => Record(
             fields
                 .into_iter()

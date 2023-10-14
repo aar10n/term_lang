@@ -133,9 +133,9 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
             match *id {
                 Id::DataCon(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ctx.con_var_ids.get(&id).unwrap()))
+                    Ok(Some(*self.ctx.ast.con_var_ids.get(&id).unwrap()))
                 }
-                Id::Decl(id) => match self.ctx.decl_var_ids.get(&id) {
+                Id::Decl(id) => match self.ctx.ast.decl_var_ids.get(&id) {
                     Some(var_id) => Ok(Some(*var_id)),
                     None => {
                         // the name is declared but not defined
@@ -146,7 +146,7 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
                 },
                 Id::Handler(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ctx.handler_var_ids.get(&id).unwrap()))
+                    Ok(Some(*self.ctx.ast.handler_var_ids.get(&id).unwrap()))
                 }
                 Id::Var(id) => Ok(id.into()),
                 id => Diagnostic::error("expected variable", self.ctx.id_as_span(id).unwrap())
@@ -180,8 +180,8 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
 }
 
 impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
-    fn context(&mut self) -> &mut Context<'ast> {
-        self.ctx
+    fn context(&mut self) -> &mut ast::Context {
+        self.ctx.ast
     }
     fn push_scope(&mut self) {
         self.scopes.push(Scope::default())
@@ -298,7 +298,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
         if let Some(id) = self.resolve_var(ident)? {
             ident.id = Some(id.into());
             Ok(())
-        } else if self.ctx.ambiguous_names.contains(&ident.raw) {
+        } else if self.ctx.ast.ambiguous_names.contains(&ident.raw) {
             // ambiguous - resolve later
             ident.id = None;
             Ok(())
