@@ -24,6 +24,7 @@ pub fn new_context() -> Context {
     ctx.register_builtin("panic");
     ctx.register_builtin("builtin_put_char");
     ctx.register_builtin("builtin_get_char");
+    ctx.register_builtin("builtin_handle_default");
     ctx
 }
 
@@ -43,7 +44,7 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     let phase2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, phase2) {
-        ctx.print_stdout(&());
+        // ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
@@ -51,7 +52,7 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     let phase3 = compose![pass::ty_check];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, phase3) {
-        ctx.print_stdout(&());
+        // ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 

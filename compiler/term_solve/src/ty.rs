@@ -5,18 +5,21 @@ use term_print as print;
 
 use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE};
 use diag::IntoDiagnostic;
-use print::{PrettyPrint, PrettyString};
+use print::{PrettyPrint, PrettyString, TABWIDTH};
 
 use std::collections::{BTreeMap, HashMap};
 
-pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
-    if t1 != t2 {
-        debug_println!(
-            "unify_ty: {} = {}",
-            t1.pretty_string(ctx),
-            t2.pretty_string(ctx)
-        );
+pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Result<Ty> {
+    if t1 == t2 {
+        return Ok(t1);
     }
+
+    let tab = TABWIDTH.repeat(level);
+    debug_println!(
+        "{tab}unify_ty: {} = {}",
+        t1.pretty_string(ctx),
+        t2.pretty_string(ctx)
+    );
 
     use Ty::*;
     Ok(match (t1, t2) {
@@ -49,7 +52,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
             result
         }
         (Rec(id1, box t1), Rec(id2, box t2)) if id1 == id2 => {
-            let t = crate::unify(ctx, t1, t2)?;
+            let t = crate::unify(ctx, t1, t2, level + 1)?;
             Rec(id1, t.into())
         }
         (Data(id1, ts1), Data(id2, ts2)) if id1 == id2 => {
@@ -65,13 +68,13 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
             let ts = ts1
                 .into_iter()
                 .zip(ts2.into_iter())
-                .map(|(t1, t2)| crate::unify(ctx, t1, t2))
+                .map(|(t1, t2)| crate::unify(ctx, t1, t2, level + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Data(id1, ts)
         }
         (Func(box t1, box t2), Func(box t3, box t4)) => {
-            let t1 = crate::unify(ctx, t1, t3)?;
-            let t2 = crate::unify(ctx, t2, t4)?;
+            let t1 = crate::unify(ctx, t1, t3, level + 1)?;
+            let t2 = crate::unify(ctx, t2, t4, level + 1)?;
             Func(t1.into(), t2.into())
         }
         (Record(fds1), Record(fds2)) => {
@@ -80,23 +83,30 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
                 let t2 = fds2.get(&name).ok_or_else(|| {
                     format!("field `{}` not found in record type", name).into_diagnostic()
                 })?;
-                let t = crate::unify(ctx, t1, t2.clone())?;
+                let t = crate::unify(ctx, t1, t2.clone(), level + 1)?;
                 fields.insert(name, t);
             }
             Record(fields)
         }
         (Effectful(box t1, f1), Effectful(box t2, f2)) => {
-            let t = unify(ctx, t1, t2)?;
-            let f = ef::unify(ctx, f1, f2)?;
+            let t = unify(ctx, t1, t2, level + 1)?;
+            let f = ef::unify(ctx, f1, f2, level + 1)?;
             Effectful(t.into(), f)
         }
         (Effectful(box ft, f), t) | (t, Effectful(box ft, f)) => {
-            let t = unify(ctx, ft, t)?;
-            let f = ef::unify(ctx, f, Ef::Pure)?;
+            let t = unify(ctx, ft, t, level + 1)?;
+            let f = ef::unify(ctx, f, Ef::Pure, level + 1)?;
             t
         }
         (Poly(_), _) | (_, Poly(_)) => panic!("unexpected poly_var in type"),
         (t1, t2) => {
+            println!(
+                "expected type `{}`, found `{}`",
+                t1.pretty_string(ctx),
+                t2.pretty_string(ctx),
+            );
+            panic!();
+
             return Err(format!(
                 "expected type `{}`, found `{}`",
                 t1.pretty_string(ctx),

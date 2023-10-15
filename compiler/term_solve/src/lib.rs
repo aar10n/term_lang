@@ -41,7 +41,7 @@ pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
         }),
     }?;
     let u = update(&mut ctx, u);
-    Ok(unify(&mut ctx, t.clone(), u)?)
+    Ok(unify(&mut ctx, t.clone(), u, 0)?)
 }
 
 /// Infers the most general type of an expression.
@@ -122,7 +122,7 @@ pub fn solve_constraints(
         match c {
             Constraint::Empty => {}
             Constraint::Eq(box t1, box t2) => {
-                let t = unify(ctx, t1.clone(), t2.clone())?;
+                let t = unify(ctx, t1.clone(), t2.clone(), 0)?;
                 if !t.is_concrete() {
                     open.push(Constraint::Eq(t1.into(), t2.into()));
                 }
@@ -136,15 +136,16 @@ pub fn solve_constraints(
     Ok(open)
 }
 
-pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
+pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Result<TyE> {
     let t1 = cannonicalize(ctx, t1);
     let t2 = cannonicalize(ctx, t2);
     if t1 == t2 {
         return Ok(t1);
     }
 
+    let tab = "  ".repeat(level);
     debug_println!(
-        "unify: {} = {}",
+        "{tab}unify: {} = {}",
         t1.pretty_string(ctx),
         t2.pretty_string(ctx)
     );
@@ -153,8 +154,8 @@ pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
     let (t2, f2, cs2) = t2.into_tuple();
     cs.extend(cs2);
 
-    let t = ty::unify(ctx, t1, t2)?;
-    let f = ef::unify(ctx, f1, f2)?;
+    let t = ty::unify(ctx, t1, t2, level + 1)?;
+    let f = ef::unify(ctx, f1, f2, level + 1)?;
     let cs = solve_constraints(ctx, cs)?;
 
     let ty = TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs));

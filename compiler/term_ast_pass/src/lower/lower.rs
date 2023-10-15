@@ -427,7 +427,7 @@ impl Lower for ast::VarDecl {
         let id = self.name.id.unwrap().decl_id();
         let var_id = ctx.ast.decl_var_ids[&id];
         let name = self.name.raw;
-        if !ctx.solve.ctx.builtins.contains(&name) {
+        if !ctx.builtins.contains(&name) {
             return Ok(None);
         }
 
@@ -618,8 +618,6 @@ impl Lower for ast::Pat {
             PatKind::Lit(l) => l.lower(ctx)?,
             PatKind::Ident(n) => {
                 let id = unwrap_resolved_ident(n)?.var_id();
-                let v = ctx.solve.new_ty_var();
-                ctx.solve.typings.insert(Expr::Var(id), TyE::pure(v));
                 Expr::Var(id)
             }
         };

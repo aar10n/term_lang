@@ -42,5 +42,4 @@ println s =
 
 # the effect operator `~` binds default handers to effects in the applied expression
 #foo () = println "hi"
-bar () = ~println "hi"
-
+#bar () = println "hi"

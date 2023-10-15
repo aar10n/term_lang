@@ -5,18 +5,21 @@ use term_print as print;
 
 use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
-use print::{PrettyPrint, PrettyString};
+use print::{PrettyPrint, PrettyString, TABWIDTH};
 
 use std::collections::{BTreeSet, HashMap};
 
-pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
-    if f1 != f2 {
-        debug_println!(
-            "unify_ef: {} = {}",
-            f1.pretty_string(ctx),
-            f2.pretty_string(ctx)
-        );
+pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef> {
+    if f1 == f2 {
+        return Ok(f1);
     }
+
+    let tab = TABWIDTH.repeat(level);
+    debug_println!(
+        "{tab}unify_ef: {} = {}",
+        f1.pretty_string(ctx),
+        f2.pretty_string(ctx)
+    );
 
     use Ef::*;
     Ok(match (f1, f2) {
@@ -26,13 +29,12 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
         (f, Mono(x)) | (Mono(x), f) => {
             let f = ctx.ef_set.find(f);
             if ef_occurs(&Mono(x), &f) {
-                return Err(format!(
-                    "recursive effect `{}` contains itself",
-                    f.pretty_string(ctx)
-                )
-                .into_diagnostic());
+                let mut fs = f.into_set();
+                fs.remove(&Mono(x));
+                Ef::from(fs)
+            } else {
+                ctx.ef_set.union(f, Mono(x))
             }
-            ctx.ef_set.union(f, Mono(x))
         }
         (Effect(id1, ts1), Effect(id2, ts2)) if id1 == id2 => {
             if ts1.len() != ts2.len() {
@@ -46,7 +48,7 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
             let ts = ts1
                 .into_iter()
                 .zip(ts2.into_iter())
-                .map(|(t1, t2)| crate::unify(ctx, t1, t2))
+                .map(|(t1, t2)| crate::unify(ctx, t1, t2, level + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Effect(id1, ts)
         }
@@ -62,7 +64,7 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
 
             let mut fs = BTreeSet::new();
             for (f1, f2) in fs1.into_iter().zip(fs2.into_iter()) {
-                let f = unify(ctx, f1, f2)?;
+                let f = unify(ctx, f1, f2, level + 1)?;
                 fs.insert(f);
             }
             Ef::from(fs)

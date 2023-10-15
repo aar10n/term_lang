@@ -53,6 +53,12 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for TyCheckVisitor<'_, 'ctx> {
 
         println!("inferring type of func: {}", id.pretty_string(self.ctx));
         println!("{}", def.body.pretty_string(&self.ctx.solve.ctx));
+        let ty = solve::infer(&mut self.ctx.solve, &def.body)?;
+        println!(
+            "type inferred as: {}",
+            ty.pretty_string(&self.ctx.solve.ctx)
+        );
+        def.ty = ty;
         Ok(())
     }
 }
