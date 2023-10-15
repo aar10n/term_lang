@@ -1,6 +1,7 @@
 panic : a -> never
 builtin_put_char : Char -> () ~ Except'IOError
 builtin_get_char : () -> Char ~ Except'IOError 
+builtin_handle_default : a -> b
 
 data List : a =
     | Nil
@@ -42,6 +43,5 @@ println s =
 
 # the effect operator `~` binds default handers to effects in the applied expression
 #foo () = println "hi"
-#bar () = ~println "hi"
-
+bar () = ~println "hi"
 

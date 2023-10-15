@@ -32,15 +32,26 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
     }
 
     fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
-        let (expr, ty) = func.lower(self.ctx)?;
+        let expr = func.lower(self.ctx)?;
         let id = func.name.id.unwrap().var_id();
 
-        println!(
-            "type of {} inferred to be {}",
-            id.pretty_string(self.ctx),
-            ty.pretty_string(self.ctx)
-        );
+        // println!("inferring type of func: {}", id.pretty_string(self.ctx));
+        // println!("{}", expr.pretty_string(self.ctx));
+        // let ty = solve::infer(&mut ctx.solve, &expr)?;
+        // let ty = solve::generalize(&mut ctx.solve, ty, &mut Default::default());
+        // // let ty = solve::infer_recursive(&mut self.ctx.solve, id, &body)?;
+        // let ty = lower::fix_ty(ctx, ty);
+        // println!("type inferred to be: {}", ty.pretty_string(ctx));
+        // println!("{:?}", ty);
 
+        // println!(
+        //     "type of {} inferred to be {}",
+        //     id.pretty_string(self.ctx),
+        //     ty.pretty_string(self.ctx)
+        // );
+        // let ty = solve::generalize(&mut self.ctx.solve, ty, &mut Default::default());
+
+        let ty = TyE::infer();
         let def = core::Def::new(id, ty, expr);
         self.ctx.defs.insert(id, def);
         Ok(())

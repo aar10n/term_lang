@@ -383,6 +383,9 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
                 .into_err();
             }
             self.ctx.ast.var_decl_ids.insert(id, *decl_id);
+        } else {
+            // this is a global function, register it
+            self.ctx.register_global_name(id, name, span).unwrap();
         }
 
         func.params.visit(self)?;

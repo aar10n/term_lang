@@ -4,14 +4,13 @@ use term_ast::visit::{Visit, Visitor};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
-use term_solve as solve;
 
 use ast::Spanned;
 use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
 use ustr::{ustr, UstrMap};
 
@@ -116,7 +115,7 @@ impl Lower for ast::Ty {
                 TyE::new(t, f, cs)
             }
         };
-        Ok(fix_ty(ctx, t))
+        Ok(t)
     }
 }
 
@@ -172,7 +171,7 @@ impl Lower for ast::DataDecl {
             } else {
                 make_ty_func(ctx, con.fields.iter().cloned(), data_ty.clone())
             };
-            defs.push(Def::new_builtin(id, fix_ty(ctx, ty)));
+            defs.push(Def::new_builtin(id, ty));
         }
 
         let data = Data {
@@ -218,7 +217,7 @@ impl Lower for ast::EffectDecl {
                 let (t, f, cs) = op.ty.clone().into_tuple();
                 let f = f | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
                 let ty = TyE::new(t, f, cs);
-                rec.insert(name, fix_ty(ctx, ty));
+                rec.insert(name, ty);
             }
             TyE::pure(Ty::Record(rec))
         };
@@ -233,7 +232,7 @@ impl Lower for ast::EffectDecl {
 
             let f = op_f | effect.clone() | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
             let ty = TyE::new(op_t, f, op_cs);
-            defs.push(Def::new_builtin(id, fix_ty(ctx, ty)));
+            defs.push(Def::new_builtin(id, ty));
         }
 
         let effect = Effect {
@@ -309,13 +308,13 @@ impl Lower for ast::EffectOpImpl {
             None => format!("expected op id").into_err()?,
         };
         let id = unwrap_resolved_ident(&self.name)?.var_id();
-        let (body, ty) = if self.params.is_empty() {
+        let body = if self.params.is_empty() {
             self.expr.lower(ctx)? // variable
         } else {
             lower_lambda(ctx, &self.params, &self.expr)? // function
         };
 
-        // println!("effect op type inferred to be: {}", ty.pretty_string(ctx));
+        let ty = TyE::infer();
         Ok((op_id, Def::new(id, ty, body)))
     }
 }
@@ -407,11 +406,13 @@ impl Lower for ast::MethodImpl {
         let id = unwrap_resolved_ident(&self.name)?.var_id();
         Ok(if self.params.is_empty() {
             // variable
-            let (expr, ty) = self.expr.lower(ctx)?;
+            let expr = self.expr.lower(ctx)?;
+            let ty = TyE::infer();
             Def::new(id, ty, expr)
         } else {
             // function
-            let (expr, ty) = lower_lambda(ctx, &self.params, &self.expr)?;
+            let expr = lower_lambda(ctx, &self.params, &self.expr)?;
+            let ty = TyE::infer();
             Def::new(id, ty, expr)
         })
     }
@@ -477,39 +478,27 @@ impl Lower for ast::Constraint {
 }
 
 impl Lower for ast::Expr {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::{ExprKind, UnOp};
         use core::{Bind, Expr, Id, Ty};
-        let (e, ty) = match &self.kind {
+        let e = match &self.kind {
             ExprKind::Apply(a, b) => {
-                let (a, _) = a.lower(ctx)?;
-                let (b, _) = b.lower(ctx)?;
-
-                let expr = Expr::Apply(a.into(), b.into());
-                let ty = TyE::infer();
-                (expr, ty)
+                let a = a.lower(ctx)?;
+                let b = b.lower(ctx)?;
+                Expr::Apply(a.into(), b.into())
             }
             ExprKind::Binary(op, a, b) => {
                 let op = Expr::Sym(ustr(op.as_str()));
-                let (a, _) = a.lower(ctx)?;
-                let (b, _) = b.lower(ctx)?;
-
-                let expr = Expr::Apply(Expr::Apply(op.into(), a.into()).into(), b.into());
-                let ty = TyE::infer();
-                (expr, ty)
+                let a = a.lower(ctx)?;
+                let b = b.lower(ctx)?;
+                Expr::Apply(Expr::Apply(op.into(), a.into()).into(), b.into())
             }
             ExprKind::Unary(op, a) => {
-                if matches!(op, UnOp::Effect) {
-                    lower_handled_expr(ctx, a)?
-                } else {
-                    let (a, _) = a.lower(ctx)?;
-                    let op = Expr::Sym(ustr(op.as_str()));
-                    let expr = Expr::Apply(op.into(), a.into());
-                    let ty = solve::infer(&mut ctx.solve, &expr)?;
-                    (expr, ty)
-                }
+                let a = a.lower(ctx)?;
+                let op = Expr::Sym(ustr(op.as_str()));
+                Expr::Apply(op.into(), a.into())
             }
             ExprKind::Case(c) => c.lower(ctx)?,
             ExprKind::Handle(h) => h.lower(ctx)?,
@@ -525,11 +514,10 @@ impl Lower for ast::Expr {
 
                 // ((<cons> e0) ((<cons> e1) <nil>))
                 let mut expr = Expr::Var(nil_id);
-                for (e, _) in es.lower(ctx)?.into_iter().rev() {
+                for e in es.lower(ctx)?.into_iter().rev() {
                     expr = make_cons_expr(cons_id, e, expr);
                 }
-                let ty = solve::infer(&mut ctx.solve, &expr)?;
-                (expr, ty)
+                expr
             }
             ExprKind::Tuple(es) => {
                 let ty_name = format!("Tuple{}", es.len());
@@ -537,21 +525,18 @@ impl Lower for ast::Expr {
 
                 // (((<tuple> e0) e1) e2)
                 let mut expr = Expr::Var(tuple_id);
-                for (e, _) in es.lower(ctx)?.into_iter().rev() {
+                for e in es.lower(ctx)?.into_iter().rev() {
                     expr = Expr::Apply(expr.into(), e.into());
                 }
-                let ty = solve::infer(&mut ctx.solve, &expr)?;
-                (expr, ty)
+                expr
             }
             ExprKind::Record(fields) => {
                 let mut rec = BTreeMap::new();
                 for (n, e) in fields {
-                    rec.insert(n.raw, e.lower(ctx)?.0);
+                    rec.insert(n.raw, e.lower(ctx)?);
                 }
-
                 let expr = Expr::Record(rec);
-                let ty = solve::infer(&mut ctx.solve, &expr)?;
-                (expr, ty)
+                expr
             }
             ExprKind::Lit(l) => l.lower(ctx)?,
             ExprKind::Ident(n) => {
@@ -560,13 +545,11 @@ impl Lower for ast::Expr {
                     Some(id) => panic!("unexpected id: {:?}", id),
                     None => Ok(Expr::Sym(n.raw)),
                 }?;
-                let ty = solve::infer(&mut ctx.solve, &expr)?;
-                (expr, ty)
+                expr
             }
         };
 
-        let expr = Expr::Span(self.span, e.into());
-        Ok((expr, ty))
+        Ok(Expr::Span(self.span, e.into()))
     }
 }
 
@@ -631,9 +614,8 @@ impl Lower for ast::Pat {
                 let xs = xs.lower(ctx)?;
                 make_cons_expr(cons_id, x, xs)
             }
-            PatKind::Lit(l) => l.lower(ctx)?.0,
+            PatKind::Lit(l) => l.lower(ctx)?,
             PatKind::Ident(n) => {
-                println!("lowering pat var: {}", n.pretty_string(ctx.ast));
                 let id = unwrap_resolved_ident(n)?.var_id();
                 let v = ctx.solve.new_ty_var();
                 ctx.solve.typings.insert(Expr::Var(id), TyE::pure(v));
@@ -645,16 +627,13 @@ impl Lower for ast::Pat {
 }
 
 impl Lower for ast::Case {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Expr;
-        let (e, _) = self.expr.lower(ctx)?;
+        let e = self.expr.lower(ctx)?;
         let bs = self.alts.lower(ctx)?;
-
-        let expr = Expr::Case(e.into(), bs);
-        let ty = solve::infer(&mut ctx.solve, &expr)?;
-        Ok((expr, ty))
+        Ok(Expr::Case(e.into(), bs))
     }
 }
 
@@ -664,22 +643,19 @@ impl Lower for ast::CaseAlt {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Alt;
         let pat = self.pat.lower(ctx)?;
-        let (expr, _) = self.expr.lower(ctx)?;
+        let expr = self.expr.lower(ctx)?;
         Ok(Alt { pat, expr })
     }
 }
 
 impl Lower for ast::Handle {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Expr, TyE};
-        let (e, _) = self.expr.lower(ctx)?;
+        let e = self.expr.lower(ctx)?;
         let hs = self.alts.lower(ctx)?;
-
-        let expr = Expr::Handle(e.into(), hs);
-        let ty = solve::infer(&mut ctx.solve, &expr)?;
-        Ok((expr, ty))
+        Ok(Expr::Handle(e.into(), hs))
     }
 }
 
@@ -689,32 +665,30 @@ impl Lower for ast::HandleAlt {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::EfAlt;
         let ef = self.ef.lower(ctx)?;
-        let (expr, _) = self.expr.lower(ctx)?;
+        let expr = self.expr.lower(ctx)?;
         let handler = None;
         Ok(EfAlt { ef, expr, handler })
     }
 }
 
 impl Lower for ast::Do {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Expr;
-        let (exprs, _): (Vec<Expr>, Vec<TyE>) = self.exprs.lower(ctx)?.into_iter().unzip();
-        let expr = Expr::Do(exprs);
-        let ty = solve::infer(&mut ctx.solve, &expr)?;
-        Ok((expr, ty))
+        let exprs = self.exprs.lower(ctx)?;
+        Ok(Expr::Do(exprs))
     }
 }
 
 impl Lower for ast::If {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Alt, Expr, Lit};
-        let (c, _) = self.cond.lower(ctx)?;
-        let (t, _) = self.then.lower(ctx)?;
-        let (f, _) = self.else_.lower(ctx)?;
+        let c = self.cond.lower(ctx)?;
+        let t = self.then.lower(ctx)?;
+        let f = self.else_.lower(ctx)?;
         let expr = Expr::Case(
             c.into(),
             vec![
@@ -728,37 +702,23 @@ impl Lower for ast::If {
                 },
             ],
         );
-
-        let ty = solve::infer(&mut ctx.solve, &expr)?;
-        Ok((expr, ty))
+        Ok(expr)
     }
 }
 
 impl Lower for ast::Func {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Bind, Expr};
         let id = unwrap_resolved_ident(&self.name)?.var_id();
-        let ft = {
-            let a = TyE::pure(ctx.solve.new_ty_var());
-            let b = TyE::pure(ctx.solve.new_ty_var());
-            let f = ctx.solve.new_ef_var();
-            TyE::simple(core::Ty::Func(a.into(), b.into()).into(), f)
-        };
-
-        ctx.solve.typings.push(vec![(Expr::Var(id), ft.clone())]);
-        let (body, ty) = lower_lambda(ctx, &self.params, &self.body)?;
-        let expr = Expr::Let(Bind::Rec(id, body.into()), None);
-        ctx.solve.typings.pop();
-
-        let ty = solve::unify(&mut ctx.solve, ft, ty)?;
-        Ok((expr, ty))
+        let body = lower_lambda(ctx, &self.params, &self.body)?;
+        Ok(Expr::Let(Bind::Rec(id, body.into()), None))
     }
 }
 
 impl Lower for ast::Lambda {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         lower_lambda(ctx, &self.params, &self.body)
@@ -766,40 +726,29 @@ impl Lower for ast::Lambda {
 }
 
 impl Lower for ast::Var {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Bind, Expr};
         let pat = self.pat.lower(ctx)?;
-        let (e, t) = self.expr.lower(ctx)?;
+        let e = self.expr.lower(ctx)?;
         let b = Bind::NonRec(pat.into(), e.into());
-
-        let expr = Expr::Let(b, None);
-        let ty = t;
-        Ok((expr, ty))
+        Ok(Expr::Let(b, None))
     }
 }
 
 impl Lower for ast::Lit {
-    type Target = (core::Expr, core::TyE);
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::LitKind;
         use core::{Expr, Lit, Ty};
 
         match &self.kind {
-            LitKind::String(s) => {
-                let expr = lower_string_lit(ctx, s)?;
-                let ty = {
-                    let list_id = expect_data(ctx, "List")?;
-                    Ty::Data(list_id, vec![primitive("Char").into()]).into()
-                };
-                Ok((expr, ty))
-            }
+            LitKind::String(s) => lower_string_lit(ctx, s),
             k => {
                 let l = lower_non_string_lit(ctx, k)?;
-                let ty = TyE::pure(l.as_ty());
-                Ok((Expr::Lit(l), ty))
+                Ok(Expr::Lit(l))
             }
         }
     }
@@ -840,73 +789,24 @@ pub fn make_ty_func(
     }
 }
 
-pub fn lower_handled_expr(
-    ctx: &mut Context,
-    expr: &ast::Expr,
-) -> diag::Result<(core::Expr, core::TyE)> {
-    use core::{Ef, EfAlt, Expr};
-    let (expr, ty) = expr.lower(ctx)?;
-    let (t, f) = ty.split_ef();
-
-    let mut hs = vec![];
-    let mut fs = BTreeSet::<Ef>::new();
-    for f in f.into_set().into_iter() {
-        let ef_id = match f {
-            Ef::Effect(id, _) => id,
-            _ => continue,
-        };
-
-        let effect = &ctx.effects[&ef_id];
-        if let Some(handler_id) = effect.default {
-            let var_id = ctx.ast.handler_var_ids[&handler_id];
-            let alt = EfAlt {
-                ef: f.clone(),
-                expr: Expr::Var(var_id),
-                handler: Some(var_id),
-            };
-
-            hs.push(alt);
-            fs.remove(&f);
-        }
-    }
-
-    let ty = t.with_ef(Ef::from(fs));
-    Ok(if hs.is_empty() {
-        (expr, ty)
-    } else {
-        (Expr::Handle(expr.into(), hs), ty)
-    })
-}
-
 pub fn lower_lambda(
     ctx: &mut Context,
     params: &[Box<ast::Pat>],
     body: &ast::Expr,
-) -> diag::Result<(core::Expr, core::TyE)> {
+) -> diag::Result<core::Expr> {
     use ast::PatKind;
     use core::{Bind, Expr};
-    ctx.solve.typings.push_empty();
 
     let mut ps = vec![];
     for p in params.iter().rev() {
         ps.push(p.lower(ctx)?);
     }
 
-    let (mut expr, _) = body.lower(ctx)?;
-    for p in ps {
-        expr = Expr::Lambda(p.into(), expr.into());
+    let mut expr = body.lower(ctx)?;
+    for p in &ps {
+        expr = Expr::Lambda(p.clone().into(), expr.into());
     }
-
-    println!("inferring type of body: {}", expr.pretty_string(ctx));
-    let ty = solve::infer_partial(&mut ctx.solve, &expr)?;
-    let ty = solve::generalize(&mut ctx.solve, ty, &mut Default::default());
-    // let ty = solve::infer_recursive(&mut self.ctx.solve, id, &body)?;
-    let ty = lower::fix_ty(ctx, ty);
-    println!("type inferred to be: {}", ty.pretty_string(ctx));
-    println!("{:?}", ty);
-
-    ctx.solve.typings.pop();
-    Ok((expr, ty))
+    Ok(expr)
 }
 
 pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Result<core::Lit> {
@@ -934,13 +834,6 @@ pub fn lower_string_lit(ctx: &mut Context, s: impl AsRef<str>) -> diag::Result<c
         expr = Expr::Apply(e.into(), expr.into());
     }
     Ok(expr)
-}
-
-//
-//
-
-pub fn fix_ty(ctx: &mut Context<'_>, t: TyE) -> TyE {
-    solve::cannonicalize(&mut ctx.solve, t)
 }
 
 fn primitive(t: &str) -> core::Ty {
