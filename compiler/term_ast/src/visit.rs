@@ -679,6 +679,7 @@ impl Visit for Func {
         visitor.visit_var_ident(&mut self.name);
         scoped! {visitor,
             self.params.visit(visitor)?;
+            self.ty.visit(visitor)?;
             self.body.visit(visitor)
         }
     }
@@ -692,6 +693,7 @@ impl Visit for Lambda {
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         scoped! {visitor,
             self.params.visit(visitor)?;
+            self.ty.visit(visitor)?;
             self.body.visit(visitor)
         }
     }
@@ -704,6 +706,7 @@ impl Visit for Var {
 
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         self.pat.visit(visitor)?;
+        self.ty.visit(visitor)?;
         self.expr.visit(visitor)
     }
 }

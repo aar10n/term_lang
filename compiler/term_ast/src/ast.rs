@@ -716,16 +716,19 @@ pub struct Func {
     pub params: Vec<P<Pat>>,
     /// Function body.
     pub body: P<Expr>,
+    /// Function type annotation.
+    pub ty: Option<P<Ty>>,
     /// Function span.
     span: Span,
 }
 
 impl Func {
-    pub fn new(name: Ident, params: Vec<P<Pat>>, body: P<Expr>) -> Self {
+    pub fn new(name: Ident, params: Vec<P<Pat>>, body: P<Expr>, ty: Option<P<Ty>>) -> Self {
         Self {
             name,
             params,
             body,
+            ty,
             span: Span::default(),
         }
     }
@@ -738,15 +741,18 @@ pub struct Lambda {
     pub params: Vec<P<Pat>>,
     /// Lambda body.
     pub body: P<Expr>,
+    /// Lambda type annotation.
+    pub ty: Option<P<Ty>>,
     /// Lambda span.
     span: Span,
 }
 
 impl Lambda {
-    pub fn new(params: Vec<P<Pat>>, body: P<Expr>) -> Self {
+    pub fn new(params: Vec<P<Pat>>, body: P<Expr>, ty: Option<P<Ty>>) -> Self {
         Self {
             params,
             body,
+            ty,
             span: Span::default(),
         }
     }
@@ -759,15 +765,18 @@ pub struct Var {
     pub pat: P<Pat>,
     /// Var expr.
     pub expr: P<Expr>,
+    /// Var type annotation.
+    pub ty: Option<P<Ty>>,
     /// Var span.
     span: Span,
 }
 
 impl Var {
-    pub fn new(pat: P<Pat>, expr: P<Expr>) -> Self {
+    pub fn new(pat: P<Pat>, expr: P<Expr>, ty: Option<P<Ty>>) -> Self {
         Self {
             pat,
             expr,
+            ty,
             span: Span::default(),
         }
     }

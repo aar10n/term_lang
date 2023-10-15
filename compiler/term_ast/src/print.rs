@@ -833,6 +833,9 @@ impl PrettyPrint<Context> for Func {
             "{tab}{ATTR}params:{RESET} {}",
             format_list(ctx, DELIM_COMMA, &self.params)
         )?;
+        if let Some(ty) = &self.ty {
+            writeln!(out, "{tab}{ATTR}type:{RESET} {}", ty.pretty_string(ctx))?;
+        }
         writeln!(out, "{tab}{ATTR}body:{RESET}")?;
         self.body.pretty_print(out, ctx, info + 1)
     }
@@ -851,6 +854,9 @@ impl PrettyPrint<Context> for Lambda {
             "{tab}{ATTR}params:{RESET} {}",
             format_list(ctx, DELIM_COMMA, &self.params)
         )?;
+        if let Some(ty) = &self.ty {
+            writeln!(out, "{tab}{ATTR}type:{RESET} {}", ty.pretty_string(ctx))?;
+        }
         writeln!(out, "{tab}{ATTR}body:{RESET}")?;
         self.body.pretty_print(out, ctx, info + 1)
     }
@@ -864,6 +870,9 @@ impl PrettyPrint<Context> for Var {
         info: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(info);
+        if let Some(ty) = &self.ty {
+            writeln!(out, "{tab}{ATTR}type:{RESET} {}", ty.pretty_string(ctx))?;
+        }
         writeln!(out, "{tab}{ATTR}expr:{RESET}")?;
         self.expr.pretty_print(out, ctx, info + 1)
     }

@@ -170,7 +170,7 @@ peg::parser! {
             "(" e:ef() ")" { (*e).kind }
 
             kw(<"()">) { EfKind::Pure }
-            kw(<"_">) { EfKind::Infer }
+            kw(<"?">) { EfKind::Infer }
             n:ty_ident() ps:ef_arg_list() { EfKind::Name(n, ps) }
         }
 
@@ -269,17 +269,21 @@ peg::parser! {
             "(" _ p:pat()? _ ")" { p.unwrap_or(Pat::from(PatKind::Unit).into()) } /
             n:ident() { Pat::from(PatKind::Ident(n)).into() }
 
+        rule ty_ann() -> Option<P<Ty>> =
+            ":" _ t:ty() { Some(t) } /
+            { None }
+
         rule func() -> Func = span(<
-            n:ident() __ ps:params(<param()>) _ "=" ___ e:expr() {
-                Func::new(n, ps, e)
+            n:ident() __ ps:params(<param()>) _ t:ty_ann() _ "=" ___ e:expr() {
+                Func::new(n, ps, e, t)
             }
         >)
 
         rule lambda() -> Lambda = span(<
-            ps:params(<param()>) _ "=>" ___ e:expr() { Lambda::new(ps, e) }
+            ps:params(<param()>) _ t:ty_ann() _ "=>" ___ e:expr() { Lambda::new(ps, e, t) }
         >)
 
-        rule var() -> Var = span(<p:pat() _ "=" ___ e:expr() { Var::new(p, e) }>)
+        rule var() -> Var = span(<p:pat() _ t:ty_ann() _ "=" ___ e:expr() { Var::new(p, e, t) }>)
 
         #[cache_left_rec]
         pub rule expr() -> P<Expr> = precedence!{
