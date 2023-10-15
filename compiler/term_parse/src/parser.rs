@@ -12,7 +12,7 @@ peg::parser! {
 
         rule _ = quiet!{whitespace()*}
         rule __ = quiet!{whitespace()+}
-        rule ___ = quiet!{eol()* _ / whitespace()*}
+        rule ___ = quiet!{eol()? _ / whitespace()*}
 
         rule int_base<T, U>(base: u32, prefix: rule<T>, digits: rule<U>) -> LitKind =
             p:prefix() d:$(digits() ("_"? d:digits(){d})*) {
@@ -243,13 +243,13 @@ peg::parser! {
             span(<p:pat() _ "->" _ e:expr() { CaseAlt::new(p, e) }>)
 
         rule case() -> Case =
-            span(<kw(<"case">) _ e:expr() eol()? alts:multiline(<case_alt()>) { Case::new(e, alts) }>)
+            span(<kw(<"case">) ___ e:expr() eol()? alts:multiline(<case_alt()>) { Case::new(e, alts) }>)
 
         rule handle_alt() -> HandleAlt =
             span(<f:ef() _ "~>" _ e:expr() { HandleAlt::new(f, e) }>)
 
         rule handle() -> Handle = span(<
-            kw(<"handle">) _ e:expr() ___ alts:multiline(<handle_alt()>) {
+            kw(<"handle">) ___ e:expr() ___ alts:multiline(<handle_alt()>) {
                 Handle::new(e, alts)
             }
         >)
@@ -270,16 +270,16 @@ peg::parser! {
             n:ident() { Pat::from(PatKind::Ident(n)).into() }
 
         rule func() -> Func = span(<
-            n:ident() __ ps:params(<param()>) _ "=" _ e:expr() {
+            n:ident() __ ps:params(<param()>) _ "=" ___ e:expr() {
                 Func::new(n, ps, e)
             }
         >)
 
         rule lambda() -> Lambda = span(<
-            ps:params(<param()>) _ "=>" _ e:expr() { Lambda::new(ps, e) }
+            ps:params(<param()>) _ "=>" ___ e:expr() { Lambda::new(ps, e) }
         >)
 
-        rule var() -> Var = span(<p:pat() _ "=" _ e:expr() { Var::new(p, e) }>)
+        rule var() -> Var = span(<p:pat() _ "=" ___ e:expr() { Var::new(p, e) }>)
 
         #[cache_left_rec]
         pub rule expr() -> P<Expr> = precedence!{

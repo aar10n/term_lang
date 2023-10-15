@@ -30,10 +30,12 @@ default handler stdio for IO
     ;
 
 # println : String -> () ~ IO
-println s = handle case s
-    | [] -> write_char '\n'
-    | x:xs -> write_char x; println xs
-    ;
+println s = 
+    handle 
+        case s
+        | [] -> write_char '\n'
+        | x:xs -> write_char x; println xs
+        ;
     | Except'IOError ~> unhandled_exception
     ;
 
