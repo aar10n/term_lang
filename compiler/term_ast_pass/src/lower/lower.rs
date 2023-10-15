@@ -502,28 +502,9 @@ impl Lower for ast::Expr {
             ExprKind::Handle(h) => h.lower(ctx)?,
             ExprKind::Do(b) => b.lower(ctx)?,
             ExprKind::If(i) => i.lower(ctx)?,
-            ExprKind::Func(n, ps, expr) => {
-                let id = unwrap_resolved_ident(n)?.var_id();
-
-                let ft = {
-                    let a = TyE::pure(ctx.solve.new_ty_var());
-                    let b = TyE::pure(ctx.solve.new_ty_var());
-                    let f = ctx.solve.new_ef_var();
-                    TyE::simple(core::Ty::Func(a.into(), b.into()).into(), f)
-                };
-
-                ctx.solve.typings.push(vec![(Expr::Var(id), ft)]);
-                let body = lower_lambda(ctx, ps, expr)?;
-                ctx.solve.typings.pop();
-                Expr::Let(Bind::Rec(id, body.into()), None)
-            }
-            ExprKind::Var(pat, expr) => {
-                let pat = pat.lower(ctx)?;
-                let expr = expr.lower(ctx)?;
-                let b = Bind::NonRec(pat.into(), expr.into());
-                Expr::Let(b, None)
-            }
-            ExprKind::Lambda(ps, expr) => lower_lambda(ctx, ps, expr)?,
+            ExprKind::Func(f) => f.lower(ctx)?,
+            ExprKind::Lambda(l) => l.lower(ctx)?,
+            ExprKind::Var(v) => v.lower(ctx)?,
             ExprKind::List(es) => {
                 let nil_id = expect_var(ctx, "Nil")?;
                 let cons_id = expect_var(ctx, "Cons")?;
@@ -714,6 +695,72 @@ impl Lower for ast::Pat {
             }
         };
         Ok(Expr::Span(self.span, e.into()))
+    }
+}
+
+impl Lower for ast::Func {
+    type Target = core::Expr;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Bind, Expr};
+        let id = unwrap_resolved_ident(&self.name)?.var_id();
+
+        let ft = {
+            let a = TyE::pure(ctx.solve.new_ty_var());
+            let b = TyE::pure(ctx.solve.new_ty_var());
+            let f = ctx.solve.new_ef_var();
+            TyE::simple(core::Ty::Func(a.into(), b.into()).into(), f)
+        };
+
+        ctx.solve.typings.push_empty();
+
+        let mut ps = vec![];
+        for p in self.params.iter().rev() {
+            ps.push(p.lower(ctx)?);
+        }
+
+        let mut expr = self.body.lower(ctx)?;
+        for p in ps {
+            expr = Expr::Lambda(p.into(), expr.into());
+        }
+
+        ctx.solve.typings.pop();
+        Ok(Expr::Let(Bind::Rec(id, expr.into()), None))
+    }
+}
+
+impl Lower for ast::Lambda {
+    type Target = core::Expr;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use ast::PatKind;
+        use core::{Bind, Expr};
+        ctx.solve.typings.push_empty();
+
+        let mut ps = vec![];
+        for p in self.params.iter().rev() {
+            ps.push(p.lower(ctx)?);
+        }
+
+        let mut expr = self.body.lower(ctx)?;
+        for p in ps {
+            expr = Expr::Lambda(p.into(), expr.into());
+        }
+
+        ctx.solve.typings.pop();
+        Ok(expr)
+    }
+}
+
+impl Lower for ast::Var {
+    type Target = core::Expr;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Bind, Expr};
+        let pat = self.pat.lower(ctx)?;
+        let expr = self.expr.lower(ctx)?;
+        let b = Bind::NonRec(pat.into(), expr.into());
+        Ok(Expr::Let(b, None))
     }
 }
 

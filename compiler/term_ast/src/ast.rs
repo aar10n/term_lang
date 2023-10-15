@@ -508,11 +508,11 @@ pub enum ExprKind {
     /// If expression.
     If(If),
     /// A function binding.
-    Func(Ident, Vec<P<Pat>>, P<Expr>),
-    /// A variable binding.
-    Var(P<Pat>, P<Expr>),
+    Func(Func),
     /// An anonymous function.
-    Lambda(Vec<P<Pat>>, P<Expr>),
+    Lambda(Lambda),
+    /// A variable binding.
+    Var(Var),
     /// A list expression.
     List(Vec<P<Expr>>),
     /// A tuple expression.
@@ -707,6 +707,72 @@ impl If {
     }
 }
 
+/// A function expression.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Func {
+    /// Function name.
+    pub name: Ident,
+    /// Function parameters.
+    pub params: Vec<P<Pat>>,
+    /// Function body.
+    pub body: P<Expr>,
+    /// Function span.
+    span: Span,
+}
+
+impl Func {
+    pub fn new(name: Ident, params: Vec<P<Pat>>, body: P<Expr>) -> Self {
+        Self {
+            name,
+            params,
+            body,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A lambda expression.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Lambda {
+    /// Lambda parameters.
+    pub params: Vec<P<Pat>>,
+    /// Lambda body.
+    pub body: P<Expr>,
+    /// Lambda span.
+    span: Span,
+}
+
+impl Lambda {
+    pub fn new(params: Vec<P<Pat>>, body: P<Expr>) -> Self {
+        Self {
+            params,
+            body,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A var expression.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Var {
+    /// Var pattern.
+    pub pat: P<Pat>,
+    /// Var expr.
+    pub expr: P<Expr>,
+    /// Var span.
+    span: Span,
+}
+
+impl Var {
+    pub fn new(pat: P<Pat>, expr: P<Expr>) -> Self {
+        Self {
+            pat,
+            expr,
+            span: Span::default(),
+        }
+    }
+}
+
 /// A literal value.
 pub type Lit = Node<LitKind>;
 
@@ -816,4 +882,7 @@ impl_spanned!(CaseAlt);
 impl_spanned!(Handle);
 impl_spanned!(HandleAlt);
 impl_spanned!(If);
+impl_spanned!(Func);
+impl_spanned!(Lambda);
+impl_spanned!(Var);
 impl_spanned!(Ident);

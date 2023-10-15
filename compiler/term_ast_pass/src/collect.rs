@@ -359,21 +359,16 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
     //
     //
 
-    fn visit_func(
-        &mut self,
-        ident: &mut Ident,
-        params: &mut Vec<P<Pat>>,
-        body: &mut P<Expr>,
-    ) -> diag::Result<()> {
+    fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
         let id = self.ctx.ids.next_var_id();
-        let name = ident.raw;
-        let span = ident.span();
+        let name = func.name.raw;
+        let span = func.name.span();
         self.ctx.register_id_name(id, name, span);
-        ident.id = Some(id.into());
+        func.name.id = Some(id.into());
         if self.level > 0 {
             // local function, we dont have to do anything else
-            params.visit(self)?;
-            return body.visit(self);
+            func.params.visit(self)?;
+            return func.body.visit(self);
         }
 
         // check if there is a declaration
@@ -382,7 +377,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             if let Some(var_id) = self.ctx.ast.decl_var_ids.insert(*decl_id, id) {
                 return DuplicateDeclErr {
                     kind: "variable",
-                    span: ident.span(),
+                    span: func.name.span(),
                     first: self.ctx.id_as_span(var_id).unwrap(),
                 }
                 .into_err();
@@ -390,8 +385,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for CollectVisitor<'_, 'ast> {
             self.ctx.ast.var_decl_ids.insert(id, *decl_id);
         }
 
-        params.visit(self)?;
-        body.visit(self)
+        func.params.visit(self)?;
+        func.body.visit(self)
     }
 
     fn visit_pat(&mut self, pat: &mut Pat) -> diag::Result<()> {

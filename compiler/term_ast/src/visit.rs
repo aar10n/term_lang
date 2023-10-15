@@ -109,27 +109,14 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     fn visit_if(&mut self, if_expr: &mut If) -> Result<S, E> {
         if_expr.walk(self)
     }
-    fn visit_func(
-        &mut self,
-        ident: &mut Ident,
-        params: &mut Vec<P<Pat>>,
-        body: &mut P<Expr>,
-    ) -> Result<S, E> {
-        self.visit_var_ident(ident)?;
-        scoped! {self,
-            params.visit(self)?;
-            body.visit(self)
-        }
+    fn visit_func(&mut self, func: &mut Func) -> Result<S, E> {
+        func.walk(self)
     }
-    fn visit_var(&mut self, bind: &mut P<Pat>, body: &mut P<Expr>) -> Result<S, E> {
-        bind.visit(self)?;
-        body.visit(self)
+    fn visit_lambda(&mut self, lambda: &mut Lambda) -> Result<S, E> {
+        lambda.walk(self)
     }
-    fn visit_lambda(&mut self, params: &mut Vec<P<Pat>>, body: &mut P<Expr>) -> Result<S, E> {
-        scoped! {self,
-            params.visit(self)?;
-            body.visit(self)
-        }
+    fn visit_var(&mut self, var: &mut Var) -> Result<S, E> {
+        var.walk(self)
     }
     fn visit_list(&mut self, items: &mut Vec<P<Expr>>) -> Result<S, E> {
         items.visit(self)
@@ -565,9 +552,9 @@ impl Visit for Expr {
             ExprKind::Handle(handle) => handle.visit(visitor),
             ExprKind::Do(block) => block.visit(visitor),
             ExprKind::If(if_) => if_.visit(visitor),
-            ExprKind::Func(ident, params, body) => visitor.visit_func(ident, params, body),
-            ExprKind::Var(bind, expr) => visitor.visit_var(bind, expr),
-            ExprKind::Lambda(pats, expr) => visitor.visit_lambda(pats, expr),
+            ExprKind::Func(func) => func.visit(visitor),
+            ExprKind::Lambda(lambda) => lambda.visit(visitor),
+            ExprKind::Var(var) => var.visit(visitor),
             ExprKind::List(exprs) => exprs.visit(visitor),
             ExprKind::Tuple(exprs) => exprs.visit(visitor),
             ExprKind::Record(fields) => fields.visit(visitor),
@@ -680,6 +667,44 @@ impl Visit for If {
         self.cond.visit(visitor)?;
         scoped!(visitor, self.then.visit(visitor)?);
         scoped!(visitor, self.else_.visit(visitor))
+    }
+}
+
+impl Visit for Func {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_func(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_var_ident(&mut self.name);
+        scoped! {visitor,
+            self.params.visit(visitor)?;
+            self.body.visit(visitor)
+        }
+    }
+}
+
+impl Visit for Lambda {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_lambda(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        scoped! {visitor,
+            self.params.visit(visitor)?;
+            self.body.visit(visitor)
+        }
+    }
+}
+
+impl Visit for Var {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_var(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        self.pat.visit(visitor)?;
+        self.expr.visit(visitor)
     }
 }
 

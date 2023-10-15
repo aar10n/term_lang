@@ -31,15 +31,10 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
         self.ctx.ast
     }
 
-    fn visit_func(
-        &mut self,
-        ident: &mut Ident,
-        params: &mut Vec<P<Pat>>,
-        body: &mut P<Expr>,
-    ) -> diag::Result<()> {
+    fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
         self.ctx.solve.typings.push_empty();
-        let id = ident.id.unwrap().var_id();
-        let body = lower::lower_lambda(&mut self.ctx, params, body)?;
+        let id = func.name.id.unwrap().var_id();
+        let body = lower::lower_lambda(&mut self.ctx, &func.params, &func.body)?;
 
         let ut = {
             let a = TyE::pure(self.ctx.solve.new_ty_var());

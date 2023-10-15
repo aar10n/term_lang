@@ -269,6 +269,18 @@ peg::parser! {
             "(" _ p:pat()? _ ")" { p.unwrap_or(Pat::from(PatKind::Unit).into()) } /
             n:ident() { Pat::from(PatKind::Ident(n)).into() }
 
+        rule func() -> Func = span(<
+            n:ident() __ ps:params(<param()>) _ "=" _ e:expr() {
+                Func::new(n, ps, e)
+            }
+        >)
+
+        rule lambda() -> Lambda = span(<
+            ps:params(<param()>) _ "=>" _ e:expr() { Lambda::new(ps, e) }
+        >)
+
+        rule var() -> Var = span(<p:pat() _ "=" _ e:expr() { Var::new(p, e) }>)
+
         #[cache_left_rec]
         pub rule expr() -> P<Expr> = precedence!{
             s:position!() n:@ e:position!() { Box::new(Expr::new(n, Span::new(source_id, s, e))) }
@@ -286,11 +298,11 @@ peg::parser! {
             // if expression
             i:if_else() { ExprKind::If(i.into()) }
             // function expression
-            n:ident() __ ps:params(<param()>) _ "=" _ e:expr() { ExprKind::Func(n, ps, e) }
+            f:func() { ExprKind::Func(f) }
+            // function expression
+            l:lambda() { ExprKind::Lambda(l) }
             // variable expression
-            p:pat() _ "=" _ e:expr() { ExprKind::Var(p, e) }
-            // lambda expression
-            ps:params(<param()>) _ "=>" _ e:expr() { ExprKind::Lambda(ps, e) }
+            v:var() { ExprKind::Var(v) }
             --
 
             // lowest priority

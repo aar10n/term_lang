@@ -640,29 +640,17 @@ impl PrettyPrint<Context> for ExprKind {
                 writeln!(out, "{tab}{TAG}If{RESET}")?;
                 if_.pretty_print(out, ctx, level + 1);
             }
-            ExprKind::Func(name, params, expr) => {
-                writeln!(out, "{tab}{TAG}Func{RESET} {}", name.pretty_string(ctx))?;
-                writeln!(
-                    out,
-                    "{ttab}{ATTR}params:{RESET} {}",
-                    format_list(ctx, DELIM_COMMA, params),
-                )?;
-                writeln!(out, "{ttab}{ATTR}body:{RESET}")?;
-                expr.pretty_print(out, ctx, level + 2);
+            ExprKind::Func(func) => {
+                writeln!(out, "{tab}{TAG}Func{RESET}")?;
+                func.pretty_print(out, ctx, level + 1);
             }
-            ExprKind::Var(name, expr) => {
-                writeln!(out, "{tab}{TAG}Let{RESET} {}", name.pretty_string(ctx))?;
-                writeln!(out, "{ttab}{ATTR}body:{RESET}")?;
-                expr.pretty_print(out, ctx, level + 2);
-            }
-            ExprKind::Lambda(params, expr) => {
+            ExprKind::Lambda(lambda) => {
                 writeln!(out, "{tab}{TAG}Lambda{RESET}")?;
-                writeln!(
-                    out,
-                    "{ttab}{ATTR}params:{RESET} {}",
-                    format_list(ctx, DELIM_COMMA, params)
-                )?;
-                expr.pretty_print(out, ctx, level + 1);
+                lambda.pretty_print(out, ctx, level + 1);
+            }
+            ExprKind::Var(var) => {
+                writeln!(out, "{tab}{TAG}Var{RESET}")?;
+                var.pretty_print(out, ctx, level + 1);
             }
             ExprKind::List(exprs) => {
                 writeln!(out, "{tab}{TAG}List{RESET}")?;
@@ -829,6 +817,55 @@ impl PrettyPrint<Context> for If {
         self.then.pretty_print(out, ctx, 0)?;
         writeln!(out, "{ATTR}else:{RESET}")?;
         self.else_.pretty_print(out, ctx, 0)
+    }
+}
+
+impl PrettyPrint<Context> for Func {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        info: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(info);
+        writeln!(
+            out,
+            "{tab}{ATTR}params:{RESET} {}",
+            format_list(ctx, DELIM_COMMA, &self.params)
+        )?;
+        writeln!(out, "{tab}{ATTR}body:{RESET}")?;
+        self.body.pretty_print(out, ctx, info + 1)
+    }
+}
+
+impl PrettyPrint<Context> for Lambda {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        info: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(info);
+        writeln!(
+            out,
+            "{tab}{ATTR}params:{RESET} {}",
+            format_list(ctx, DELIM_COMMA, &self.params)
+        )?;
+        writeln!(out, "{tab}{ATTR}body:{RESET}")?;
+        self.body.pretty_print(out, ctx, info + 1)
+    }
+}
+
+impl PrettyPrint<Context> for Var {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        info: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(info);
+        writeln!(out, "{tab}{ATTR}expr:{RESET}")?;
+        self.expr.pretty_print(out, ctx, info + 1)
     }
 }
 

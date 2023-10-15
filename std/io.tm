@@ -29,7 +29,7 @@ default handler stdio for IO
     | write_char = builtin_put_char
     ;
 
-# println : String -> () ~ IO
+
 println s = handle case s
     | [] -> write_char '\n'
     | x:xs -> write_char x; println xs
