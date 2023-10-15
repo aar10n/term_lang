@@ -46,7 +46,9 @@ impl PrettyPrint<Context> for ItemKind {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         match self {
-            ItemKind::Command(..) => {}
+            ItemKind::Command(..) => {
+                writeln!(out, "{tab}{TAG}Command{RESET}")?;
+            }
             ItemKind::DataDecl(data_decl) => {
                 writeln!(out, "{tab}{TAG}DataDecl{RESET}")?;
                 data_decl.pretty_print(out, ctx, level + 1)?;

@@ -8,6 +8,7 @@ use term_print as print;
 use term_rewrite_csp as rewrite;
 use term_solve as solve;
 
+use ast::ItemKind;
 use common::source::{SourceFile, SourceId, SourceMap};
 use common::span::Span;
 use core::{Context, Expr, Ty, TyE};
@@ -40,16 +41,18 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     module.print_stdout(&ctx.ast);
 
-    let pass2 = compose![pass::lower_decls, pass::lower_impls];
+    let pass2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, pass2) {
         ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
-    ctx.print_stdout(&());
+    // ctx.print_stdout(&());
 
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, pass::lower_exprs) {
-        return Err(Report::from(errs));
+    for item in module.items {
+        if let ItemKind::Command(name, args) = item.kind {
+            crate::command::eval_command(&mut ctx, name, &args)?;
+        }
     }
 
     println!("{GREEN}Done{RESET}");

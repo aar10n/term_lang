@@ -1,4 +1,5 @@
 #![allow(warnings)]
+mod command;
 mod driver;
 mod repl;
 

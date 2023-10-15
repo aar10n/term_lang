@@ -437,7 +437,7 @@ peg::parser! {
             span(<n:ident() _ ":" _ t:ty() { VarDecl::new(n, t) }>)
 
         rule command() -> (Ustr, String) =
-            ":" cmd:$(['a'..='z'|'A'..='Z'|'_']+) rest:(__ x:$(![_]) {x}) {
+            ":" cmd:$(['a'..='z'|'A'..='Z'|'_']+) __ rest:(x:$((!eol() [_])+) {x}) {
                 (Ustr::from(cmd), rest.to_owned())
             }
 

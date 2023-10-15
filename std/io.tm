@@ -11,7 +11,7 @@ effect Except : e
     | raise : e -> ()
     ;
 
-default handler unhandled_exception for Except'e
+default handler panic_exception for Except'e
     | raise = panic
     ;
 
@@ -30,16 +30,18 @@ default handler stdio for IO
     ;
 
 
-println s : String -> () ~ ? = 
+println s = 
     handle 
         case s
         | [] -> write_char '\n'
         | x:xs -> write_char x; println xs
         ;
-    | Except'IOError ~> unhandled_exception
+    | Except'IOError ~> panic_exception
     ;
 
 
 # the effect operator `~` binds default handers to effects in the applied expression
 #foo () = println "hi"
 #bar () = ~println "hi"
+
+
