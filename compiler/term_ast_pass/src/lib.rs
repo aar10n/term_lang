@@ -9,6 +9,7 @@ mod lower_decl;
 mod lower_expr;
 mod lower_impl;
 mod resolve;
+mod tycheck;
 
 use term_ast as ast;
 use term_core as core;
@@ -24,6 +25,7 @@ pub use lower_decl::*;
 pub use lower_expr::*;
 pub use lower_impl::*;
 pub use resolve::*;
+pub use tycheck::*;
 
 /// A duplicate declaration error.
 #[derive(Debug, Clone, PartialEq, Eq)]

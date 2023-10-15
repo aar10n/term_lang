@@ -30,9 +30,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 let t = crate::update(ctx, t);
                 (Expr::Var(id), crate::cannonicalize(ctx, t))
             } else if let Some(d) = ctx.defs.get(&id).cloned() {
-                let t = crate::instantiate(ctx, d.ty, &mut HashMap::new());
+                let d = d.borrow();
+                let t = crate::instantiate(ctx, d.ty.clone(), &mut HashMap::new());
                 ctx.typings.insert(Expr::Var(id), t.clone());
-                (d.body, t)
+                (d.body.clone(), t)
             } else {
                 println!("-------");
                 ctx.typings.print_stdout(ctx);
@@ -316,7 +317,8 @@ pub fn solve_collect_bindings(
             // the outer leftmost expression must be a data constructor reference
             let (t1, vs1) = if let Expr::Var(id) = e1 {
                 // id is a data constructor. get the type
-                let def = ctx.defs.get(id).unwrap();
+                let def = ctx.defs.get(id).cloned().unwrap();
+                let def = def.borrow();
                 let t = crate::instantiate(ctx, def.ty.clone(), &mut HashMap::default());
                 (t.ty, vec![])
             } else {
@@ -342,7 +344,8 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
     use Ef::*;
     Ok(match f {
         Effect(ef_id, ts) => {
-            let effect = ctx.effects.get(ef_id).unwrap();
+            let effect = ctx.effects.get(ef_id).cloned().unwrap();
+            let effect = effect.borrow();
             let mut t = crate::instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
             t
         }

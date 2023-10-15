@@ -11,6 +11,7 @@ use core::{Ef, TyE};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use lower::Lower;
 use print::{PrettyPrint, PrettyString};
+use std::cell::RefCell;
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
@@ -32,7 +33,7 @@ impl<'v, 'ast> LowerDeclVisitor<'v, 'ast> {
                 def.id.pretty_string(self.ctx),
                 def.ty.pretty_string(self.ctx)
             );
-            self.ctx.defs.insert(def.id, def);
+            self.ctx.defs.insert(def.id, RefCell::new(def).into());
         }
     }
 }
@@ -46,7 +47,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
         let (data, defs) = data.lower(&mut self.ctx)?;
         solve::check_valid_type_params(&mut self.ctx, &data.params, &data.constraints)?;
 
-        self.ctx.datas.insert(data.id, data);
+        self.ctx.datas.insert(data.id, RefCell::new(data).into());
         self.register_defs(defs);
         Ok(())
     }
@@ -55,14 +56,18 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
         let (effect, defs) = effect_decl.lower(&mut self.ctx)?;
         solve::check_valid_type_params(&mut self.ctx, &effect.params, &effect.constraints)?;
 
-        self.ctx.effects.insert(effect.id, effect);
+        self.ctx
+            .effects
+            .insert(effect.id, RefCell::new(effect).into());
         self.register_defs(defs);
         Ok(())
     }
 
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
         let class = class.lower(&mut self.ctx)?;
-        self.ctx.classes.insert(class.id, class);
+        self.ctx
+            .classes
+            .insert(class.id, RefCell::new(class).into());
         Ok(())
     }
 

@@ -11,6 +11,7 @@ use core::TyE;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use lower::Lower;
 use print::{PrettyPrint, PrettyString};
+use std::cell::RefCell;
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
@@ -53,7 +54,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
 
         let ty = TyE::infer();
         let def = core::Def::new(id, ty, expr);
-        self.ctx.defs.insert(id, def);
+        self.ctx.defs.insert(id, RefCell::new(def).into());
         Ok(())
     }
 }

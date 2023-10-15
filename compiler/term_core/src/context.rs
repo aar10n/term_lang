@@ -1,8 +1,10 @@
 use crate::core::*;
 use term_common::{declare_id_collection, declare_union_id, source::SourceMap, span::Spanned};
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
 
 declare_id_collection! {
@@ -40,12 +42,12 @@ pub struct Context {
     pub global_names: UstrMap<Id>,
     pub global_types: UstrMap<Id>,
 
-    pub classes: BTreeMap<ClassId, Class>,
-    pub datas: BTreeMap<DataId, Data>,
-    pub defs: BTreeMap<VarId, Def>,
-    pub effects: BTreeMap<EffectId, Effect>,
-    pub handlers: BTreeMap<HandlerId, Handler>,
-    pub insts: BTreeMap<InstId, Inst>,
+    pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
+    pub datas: BTreeMap<DataId, Rc<RefCell<Data>>>,
+    pub defs: BTreeMap<VarId, Rc<RefCell<Def>>>,
+    pub effects: BTreeMap<EffectId, Rc<RefCell<Effect>>>,
+    pub handlers: BTreeMap<HandlerId, Rc<RefCell<Handler>>>,
+    pub insts: BTreeMap<InstId, Rc<RefCell<Inst>>>,
 
     /// id -> name and span.
     id_names: BTreeMap<Id, (Ustr, Span)>,

@@ -2,7 +2,10 @@ pub mod ansi;
 
 use ansi::{StripAnsi, DELIM, RESET};
 use const_format::concatcp;
+
+use std::cell::RefCell;
 use std::io;
+use std::rc::Rc;
 
 pub const TABWIDTH: &str = "  ";
 pub const DELIM_COMMA: &str = concatcp!(DELIM, ", ", RESET);
@@ -63,6 +66,28 @@ impl<T: PrettyPrint<Ctx, Info>, Ctx, Info: Clone> PrettyPrint<Ctx, Info> for &T 
         info: Info,
     ) -> io::Result<()> {
         (**self).pretty_print(out, ctx, info)
+    }
+}
+
+impl<T: PrettyPrint<Ctx, Info>, Ctx, Info: Clone> PrettyPrint<Ctx, Info> for Rc<T> {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Ctx,
+        info: Info,
+    ) -> io::Result<()> {
+        (**self).pretty_print(out, ctx, info)
+    }
+}
+
+impl<T: PrettyPrint<Ctx, Info>, Ctx, Info: Clone> PrettyPrint<Ctx, Info> for RefCell<T> {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Ctx,
+        info: Info,
+    ) -> io::Result<()> {
+        self.borrow().pretty_print(out, ctx, info)
     }
 }
 

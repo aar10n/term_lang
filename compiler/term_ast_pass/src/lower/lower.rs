@@ -9,6 +9,7 @@ use ast::Spanned;
 use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
+use std::cell::RefCell;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
@@ -374,7 +375,7 @@ impl Lower for ast::ClassInst {
         let mut methods = vec![];
         for def in self.members.lower(ctx)? {
             methods.push(def.id);
-            ctx.defs.insert(def.id, def);
+            ctx.defs.insert(def.id, RefCell::new(def).into());
         }
 
         Ok(Inst {

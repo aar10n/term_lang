@@ -34,20 +34,26 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
     let file = ctx.sources.get(source_id).unwrap();
     let mut module = parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
 
-    let pass1 = compose![pass::collect, pass::resolve];
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, pass1) {
+    let phase1 = compose![pass::collect, pass::resolve];
+    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase1) {
         return Err(Report::from(errs));
     }
 
     module.print_stdout(&ctx.ast);
 
-    let pass2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, pass2) {
+    let phase2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
+    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase2) {
         ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
     // ctx.print_stdout(&());
+
+    let phase3 = compose![pass::ty_check];
+    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase3) {
+        ctx.print_stdout(&());
+        return Err(Report::from(errs));
+    }
 
     for item in module.items {
         if let ItemKind::Command(name, args) = item.kind {

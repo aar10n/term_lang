@@ -11,6 +11,7 @@ use core::TyE;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use lower::Lower;
 use print::{PrettyPrint, PrettyString};
+use std::cell::RefCell;
 
 use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
@@ -32,7 +33,7 @@ impl<'v, 'ast> LowerImplVisitor<'v, 'ast> {
                 def.id.pretty_string(self.ctx),
                 def.ty.pretty_string(self.ctx)
             );
-            self.ctx.defs.insert(def.id, def);
+            self.ctx.defs.insert(def.id, RefCell::new(def).into());
         }
     }
 }
@@ -46,18 +47,21 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
         let is_default = handler.default;
         let (handler, defs) = handler.lower(&mut self.ctx)?;
         if is_default {
-            let effect = self.ctx.effects.get_mut(&handler.effect_id).unwrap();
+            let effect = self.ctx.effects.get(&handler.effect_id).cloned().unwrap();
+            let mut effect = effect.borrow_mut();
             effect.default = Some(handler.id);
         }
 
-        self.ctx.handlers.insert(handler.id, handler);
+        self.ctx
+            .handlers
+            .insert(handler.id, RefCell::new(handler).into());
         self.register_defs(defs);
         Ok(())
     }
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
         let inst = inst.lower(&mut self.ctx)?;
-        self.ctx.insts.insert(inst.id, inst);
+        self.ctx.insts.insert(inst.id, RefCell::new(inst).into());
         Ok(())
     }
 }

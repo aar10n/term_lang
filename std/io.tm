@@ -1,7 +1,6 @@
 panic : a -> never
 builtin_put_char : Char -> () ~ Except'IOError
 builtin_get_char : () -> Char ~ Except'IOError 
-builtin_handle_default : a -> b
 
 data List : a =
     | Nil
