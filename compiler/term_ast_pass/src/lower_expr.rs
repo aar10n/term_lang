@@ -35,6 +35,12 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerExprVisitor<'_, 'ast> {
         let (expr, ty) = func.lower(self.ctx)?;
         let id = func.name.id.unwrap().var_id();
 
+        println!(
+            "type of {} inferred to be {}",
+            id.pretty_string(self.ctx),
+            ty.pretty_string(self.ctx)
+        );
+
         let def = core::Def::new(id, ty, expr);
         self.ctx.defs.insert(id, def);
         Ok(())

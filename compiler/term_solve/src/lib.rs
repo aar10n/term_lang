@@ -139,13 +139,15 @@ pub fn solve_constraints(
 pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
     let t1 = cannonicalize(ctx, t1);
     let t2 = cannonicalize(ctx, t2);
-    if t1 != t2 {
-        debug_println!(
-            "unify: {} = {}",
-            t1.pretty_string(ctx),
-            t2.pretty_string(ctx)
-        );
+    if t1 == t2 {
+        return Ok(t1);
     }
+
+    debug_println!(
+        "unify: {} = {}",
+        t1.pretty_string(ctx),
+        t2.pretty_string(ctx)
+    );
 
     let (t1, f1, mut cs) = t1.into_tuple();
     let (t2, f2, cs2) = t2.into_tuple();
@@ -154,11 +156,9 @@ pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
     let t = ty::unify(ctx, t1, t2)?;
     let f = ef::unify(ctx, f1, f2)?;
     let cs = solve_constraints(ctx, cs)?;
-    Ok(TyE::new(
-        ty::update(ctx, t),
-        ef::update(ctx, f),
-        cs::update(ctx, cs),
-    ))
+
+    let ty = TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs));
+    Ok(ty)
 }
 
 pub fn update(ctx: &mut Context<'_>, t: TyE) -> TyE {

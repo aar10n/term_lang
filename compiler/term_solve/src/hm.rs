@@ -225,7 +225,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
             let (expr_t, expr_f, expr_cs) = algorithmj(ctx, e.clone(), level + 1)?.into_tuple();
 
-            let mut fs = expr_f.into_hashset();
+            let mut fs = expr_f.into_set();
             for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
                     "{tab}[han] solving: {} ~> {}",
@@ -248,7 +248,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 );
 
                 // remove handled effects from the set
-                for f in f.clone().into_hashset() {
+                for f in f.clone().into_set() {
                     fs.remove(&f);
                 }
             }

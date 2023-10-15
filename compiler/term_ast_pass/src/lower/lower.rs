@@ -11,7 +11,7 @@ use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::vec;
 use ustr::{ustr, UstrMap};
 
@@ -134,7 +134,18 @@ impl Lower for ast::Ef {
                 let ts = ts.lower(ctx)?;
                 Ef::Effect(id, ts)
             }
-            EfKind::Union(fs) => Ef::Union(fs.lower(ctx)?),
+            EfKind::Union(fs) => {
+                let fs = fs.lower(ctx)?;
+                let mut fs = BTreeSet::from_iter(fs);
+                fs.remove(&Ef::Pure);
+                if fs.is_empty() {
+                    Ef::Pure
+                } else if fs.len() == 1 {
+                    fs.into_iter().next().unwrap()
+                } else {
+                    Ef::Union(fs)
+                }
+            }
         })
     }
 }
@@ -205,7 +216,7 @@ impl Lower for ast::EffectDecl {
             let mut rec = BTreeMap::new();
             for (name, op) in self.ops.iter().map(|x| x.name.raw).zip(ops.iter()) {
                 let (t, f, cs) = op.ty.clone().into_tuple();
-                let f = f | Ef::Union(combining_efs.clone());
+                let f = f | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
                 let ty = TyE::new(t, f, cs);
                 rec.insert(name, fix_ty(ctx, ty));
             }
@@ -220,7 +231,7 @@ impl Lower for ast::EffectDecl {
             let id = ctx.ast.op_var_ids[&op.id];
             let (op_t, op_f, op_cs) = op.ty.clone().into_tuple();
 
-            let f = op_f | effect.clone() | Ef::Union(combining_efs.clone());
+            let f = op_f | effect.clone() | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
             let ty = TyE::new(op_t, f, op_cs);
             defs.push(Def::new_builtin(id, fix_ty(ctx, ty)));
         }
@@ -839,7 +850,7 @@ pub fn lower_handled_expr(ctx: &mut Context, expr: &ast::Expr) -> diag::Result<c
 
     let mut hs = vec![];
     let mut fs = HashSet::<Ef>::new();
-    for f in f.into_hashset().into_iter() {
+    for f in f.into_set().into_iter() {
         let ef_id = match f {
             Ef::Effect(id, _) => id,
             _ => continue,
@@ -891,6 +902,7 @@ pub fn lower_lambda(
     // let ty = solve::infer_recursive(&mut self.ctx.solve, id, &body)?;
     let ty = lower::fix_ty(ctx, ty);
     println!("type inferred to be: {}", ty.pretty_string(ctx));
+    println!("{:?}", ty);
 
     ctx.solve.typings.pop();
     Ok((expr, ty))

@@ -7,7 +7,7 @@ use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
     if f1 != f2 {
@@ -53,18 +53,19 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
         (Union(fs1), Union(fs2)) => {
             if fs1.len() != fs2.len() {
                 return Err(format!(
-                    "cannot unify effect unions of different lengths: {} and {}",
+                    "cannot unify union types of different lengths: {} and {}",
                     fs1.len(),
                     fs2.len()
                 )
                 .into_diagnostic());
             }
-            let fs = fs1
-                .into_iter()
-                .zip(fs2.into_iter())
-                .map(|(f1, f2)| unify(ctx, f1, f2))
-                .collect::<Result<Vec<_>, _>>()?;
-            Union(fs)
+
+            let mut fs = BTreeSet::new();
+            for (f1, f2) in fs1.into_iter().zip(fs2.into_iter()) {
+                let f = unify(ctx, f1, f2)?;
+                fs.insert(f);
+            }
+            Ef::from(fs)
         }
         (Poly(_), _) | (_, Poly(_)) => panic!("unexpected poly_var in effect"),
         (f1, f2) => {
@@ -154,6 +155,7 @@ pub fn generalize(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<MonoVarId, Poly
 pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
     use Ef::*;
     match f {
+        Infer => Pure,
         Effect(id, ts) => {
             let ts = ts
                 .into_iter()
@@ -173,7 +175,7 @@ pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
             }
 
             if fs.len() == 1 {
-                cannonicalize(ctx, fs.pop().unwrap())
+                cannonicalize(ctx, fs.into_iter().next().unwrap())
             } else {
                 Ef::Union(
                     fs.into_iter()

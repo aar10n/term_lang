@@ -1,6 +1,6 @@
 panic : a -> never
 builtin_put_char : Char -> () ~ Except'IOError
-builtin_get_char : () -> Char ~ Except'IOError
+builtin_get_char : () -> Char ~ Except'IOError 
 
 data List : a =
     | Nil
@@ -30,10 +30,13 @@ default handler stdio for IO
     ;
 
 # println : String -> () ~ IO
-println s = case s
+println s = handle case s
     | [] -> write_char '\n'
     | x:xs -> write_char x; println xs
     ;
+    | Except'IOError ~> unhandled_exception
+    ;
+
 
 # the effect operator `~` binds default handers to effects in the applied expression
 #foo () = println "hi"

@@ -1,7 +1,7 @@
 use term_common::{declare_child_id, declare_id, declare_union_id};
 pub use term_common::{span::Span, P};
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::BitOr;
 use ustr::Ustr;
 
@@ -197,7 +197,7 @@ pub enum Ef {
     /// An effect type.
     Effect(EffectId, Vec<TyE>),
     /// Effect union (A | B). invariant: len >= 2
-    Union(Vec<Ef>),
+    Union(BTreeSet<Ef>),
 }
 
 impl Ef {
@@ -214,12 +214,18 @@ impl Ef {
         }
     }
 
-    pub fn into_hashset(self) -> HashSet<Ef> {
+    pub fn into_set(self) -> BTreeSet<Ef> {
         match self {
-            Self::Pure => HashSet::default(),
-            Self::Union(fs) => fs.into_iter().flat_map(|f| f.into_hashset()).collect(),
+            Self::Infer | Self::Pure => BTreeSet::default(),
+            Self::Union(fs) => fs.into_iter().flat_map(|f| f.into_set()).collect(),
             f => vec![f].into_iter().collect(),
         }
+    }
+
+    pub fn with_ef(self, f: Ef) -> Ef {
+        let mut fs = self.into_set();
+        fs.insert(f);
+        Ef::from(fs)
     }
 }
 
@@ -227,34 +233,19 @@ impl BitOr for Ef {
     type Output = Self;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
-            (Self::Infer, f) | (f, Self::Infer) => f,
-            (Self::Pure, f) | (f, Self::Pure) => f,
-            (Self::Union(mut fs), f) | (f, Self::Union(mut fs)) => {
-                fs.push(f);
-                fs.dedup();
-                if fs.len() == 1 {
-                    fs.pop().unwrap()
-                } else {
-                    Self::Union(fs)
-                }
-            }
-            (lhs, rhs) => Self::Union(vec![lhs, rhs]),
-        }
+        self.with_ef(rhs)
     }
 }
 
-impl From<HashSet<Ef>> for Ef {
-    fn from(mut set: HashSet<Ef>) -> Self {
+impl From<BTreeSet<Ef>> for Ef {
+    fn from(mut set: BTreeSet<Ef>) -> Self {
         set.remove(&Self::Pure);
         if set.is_empty() {
             Self::Pure
         } else if set.len() == 1 {
             set.into_iter().next().unwrap()
         } else {
-            let mut fs = set.into_iter().collect::<Vec<_>>();
-            fs.sort();
-            Self::Union(fs)
+            Self::Union(set.into_iter().collect())
         }
     }
 }
