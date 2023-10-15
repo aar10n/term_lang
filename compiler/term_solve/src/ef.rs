@@ -11,11 +11,11 @@ use std::collections::HashMap;
 
 pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
     if f1 != f2 {
-        // debug_println!(
-        //     "unify_ef: {} = {}",
-        //     f1.pretty_string(ctx),
-        //     f2.pretty_string(ctx)
-        // );
+        debug_println!(
+            "unify_ef: {} = {}",
+            f1.pretty_string(ctx),
+            f2.pretty_string(ctx)
+        );
     }
 
     use Ef::*;
@@ -73,6 +73,8 @@ pub fn unify(ctx: &mut Context<'_>, f1: Ef, f2: Ef) -> diag::Result<Ef> {
             ctx.ef_set.print_stdout(ctx);
             println!("-----");
             // panic!();
+            println!("f1 = {:?}", f1);
+            println!("f2 = {:?}", f2);
             return Err(format!(
                 "expected effect `{}`, found `{}`",
                 f1.pretty_string(ctx),

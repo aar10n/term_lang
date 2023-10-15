@@ -13,6 +13,7 @@ pub mod union_find;
 pub use context::*;
 use term_core as core;
 use term_diag as diag;
+use term_print::PrettyString;
 
 use constraint::cs;
 use core::{Constraint, Ef, Expr, MonoVarId, PolyVarId, Ty, TyE, VarId};
@@ -23,7 +24,7 @@ use std::collections::{BTreeSet, HashMap};
 
 macro_rules! debug_println {
     ($($arg:tt)*) => {
-        // println!($($arg)*);
+        println!($($arg)*);
     };
 }
 pub(crate) use debug_println;
@@ -139,11 +140,11 @@ pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE) -> diag::Result<TyE> {
     let t1 = cannonicalize(ctx, t1);
     let t2 = cannonicalize(ctx, t2);
     if t1 != t2 {
-        // debug_println!(
-        //     "unify: {} = {}",
-        //     t1.pretty_string(ctx),
-        //     t2.pretty_string(ctx)
-        // );
+        debug_println!(
+            "unify: {} = {}",
+            t1.pretty_string(ctx),
+            t2.pretty_string(ctx)
+        );
     }
 
     let (t1, f1, mut cs) = t1.into_tuple();

@@ -29,14 +29,12 @@ default handler stdio for IO
     | write_char = builtin_put_char
     ;
 
-
-println s = handle case s
+# println : String -> () ~ IO
+println s = case s
     | [] -> write_char '\n'
     | x:xs -> write_char x; println xs
     ;
-    | Except'IOError ~> unhandled_exception
-    ;
 
 # the effect operator `~` binds default handers to effects in the applied expression
-foo () = println "hi"
-bar () = ~println "hi"
+#foo () = println "hi"
+#bar () = ~println "hi"

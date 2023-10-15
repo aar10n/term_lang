@@ -11,11 +11,11 @@ use std::collections::{BTreeMap, HashMap};
 
 pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty) -> diag::Result<Ty> {
     if t1 != t2 {
-        // debug_println!(
-        //     "unify_ty: {} = {}",
-        //     t1.pretty_string(ctx),
-        //     t2.pretty_string(ctx)
-        // );
+        debug_println!(
+            "unify_ty: {} = {}",
+            t1.pretty_string(ctx),
+            t2.pretty_string(ctx)
+        );
     }
 
     use Ty::*;

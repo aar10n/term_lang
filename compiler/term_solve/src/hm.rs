@@ -27,7 +27,8 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         Var(id) => {
             debug_println!("{tab}[var] solving: {}", id.pretty_string(ctx));
             let (e, t) = if let Some(t) = ctx.typings.get(&Expr::Var(id)).cloned() {
-                (Expr::Var(id), crate::update(ctx, t))
+                let t = crate::update(ctx, t);
+                (Expr::Var(id), crate::cannonicalize(ctx, t))
             } else if let Some(d) = ctx.defs.get(&id).cloned() {
                 let t = crate::instantiate(ctx, d.ty, &mut HashMap::new());
                 ctx.typings.insert(Expr::Var(id), t.clone());
@@ -98,12 +99,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             )?;
 
             let result = crate::update(ctx, TyE::pure(v).with_ef(f1 | f2));
-            debug_println!(
-                "{tab}[app] done: {} | {} -> {}",
-                t1.pretty_string(ctx),
-                t2.pretty_string(ctx),
-                result.pretty_string(ctx),
-            );
+            debug_println!("{tab}[app] done: {}", result.pretty_string(ctx),);
             result
         }
         Lambda(box p, box e) => {
