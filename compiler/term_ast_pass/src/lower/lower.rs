@@ -498,8 +498,13 @@ impl Lower for ast::Expr {
             }
             ExprKind::Unary(op, a) => {
                 let a = a.lower(ctx)?;
-                let op = Expr::Sym(ustr(op.as_str()));
-                Expr::Apply(op.into(), a.into())
+                if matches!(op, UnOp::Effect) {
+                    // handle default
+                    Expr::Handle(a.into(), None)
+                } else {
+                    let op = Expr::Sym(ustr(op.as_str()));
+                    Expr::Apply(op.into(), a.into())
+                }
             }
             ExprKind::Case(c) => c.lower(ctx)?,
             ExprKind::Handle(h) => h.lower(ctx)?,
@@ -654,7 +659,7 @@ impl Lower for ast::Handle {
         use core::{Expr, TyE};
         let e = self.expr.lower(ctx)?;
         let hs = self.alts.lower(ctx)?;
-        Ok(Expr::Handle(e.into(), hs))
+        Ok(Expr::Handle(e.into(), Some(hs)))
     }
 }
 
@@ -665,7 +670,7 @@ impl Lower for ast::HandleAlt {
         use core::EfAlt;
         let ef = self.ef.lower(ctx)?;
         let expr = self.expr.lower(ctx)?;
-        let handler = None;
+        let handler = ctx.reserve_handler_slot();
         Ok(EfAlt { ef, expr, handler })
     }
 }
@@ -843,6 +848,7 @@ fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
     expect_id_defined(&ctx.global_names, "variable", name, |id| match id {
         Id::DataCon(id) => Some(ctx.ast.con_var_ids[&id]),
         Id::Var(id) => Some(*id),
+        Id::Decl(id) => ctx.ast.decl_var_ids.get(&id).copied(),
         _ => None,
     })
 }

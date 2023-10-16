@@ -24,7 +24,6 @@ pub fn new_context() -> Context {
     ctx.register_builtin("panic");
     ctx.register_builtin("builtin_put_char");
     ctx.register_builtin("builtin_get_char");
-    ctx.register_builtin("builtin_handle_default");
     ctx
 }
 

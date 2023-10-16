@@ -52,12 +52,10 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for TyCheckVisitor<'_, 'ctx> {
         let mut def = def.borrow_mut();
 
         println!("inferring type of func: {}", id.pretty_string(self.ctx));
-        println!("{}", def.body.pretty_string(&self.ctx.solve.ctx));
-        let ty = solve::infer(&mut self.ctx.solve, &def.body)?;
-        println!(
-            "type inferred as: {}",
-            ty.pretty_string(&self.ctx.solve.ctx)
-        );
+        println!("{}", def.body.pretty_string(self.ctx));
+        let (body, ty) = solve::infer(&mut self.ctx.solve, def.body.clone())?;
+        println!("updated body: {}", body.pretty_string(self.ctx));
+        println!("type inferred as: {}", ty.pretty_string(self.ctx));
         def.ty = ty;
         Ok(())
     }

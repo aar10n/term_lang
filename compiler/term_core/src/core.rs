@@ -1,6 +1,7 @@
 use term_common::{declare_child_id, declare_id, declare_union_id};
 pub use term_common::{span::Span, P};
 
+use either::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::BitOr;
 use ustr::Ustr;
@@ -27,6 +28,8 @@ declare_id!(PolyVarId);
 declare_id!(MonoVarId);
 /// A variable id.
 declare_id!(VarId);
+/// A handler slot id.
+declare_id!(HSlotId);
 
 /// Top level id.
 declare_union_id!(Id {
@@ -277,7 +280,7 @@ pub enum Expr {
     /// Case expression.
     Case(P<Expr>, Vec<Alt>),
     /// Handle expression.
-    Handle(P<Expr>, Vec<EfAlt>),
+    Handle(P<Expr>, Option<Vec<EfAlt>>),
     /// Do expression.
     Do(Vec<Expr>),
 
@@ -307,7 +310,7 @@ pub struct Alt {
 pub struct EfAlt {
     pub ef: Ef,
     pub expr: Expr,
-    pub handler: Option<VarId>,
+    pub handler: HSlotId,
 }
 
 /// A name binding.

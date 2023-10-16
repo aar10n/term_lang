@@ -241,7 +241,7 @@ impl PrettyPrint<Context> for EfAlt {
         write!(out, "{tab}")?;
         self.ef.pretty_print(out, ctx, Default::default())?;
         write!(out, " {PUNCT}~>{RESET} ")?;
-        if let Some(id) = self.handler {
+        if let Some(id) = ctx.handler_slots[self.handler.raw] {
             write!(out, "{}", id.pretty_string(ctx))
         } else {
             self.expr.pretty_print(out, ctx, 0)
@@ -637,6 +637,17 @@ impl_pretty_print_for_id!(InstId);
 // impl_pretty_print_for_id!(MonoVarId);
 impl_pretty_print_for_id!(PolyVarId);
 impl_pretty_print_for_id!(VarId);
+
+impl<Ctx> PrettyPrint<Ctx> for HSlotId {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Ctx,
+        info: usize,
+    ) -> io::Result<()> {
+        write!(out, "{RED}<{}>{RESET}", self.raw)
+    }
+}
 
 fn write_args_list<I, T, S>(
     out: &mut impl io::Write,

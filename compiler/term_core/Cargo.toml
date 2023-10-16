@@ -9,4 +9,5 @@ edition = "2021"
 term_common = { path = "../term_common" }
 term_print = { path = "../term_print" }
 
+either = "1.9.0"
 ustr = "0.10.0"

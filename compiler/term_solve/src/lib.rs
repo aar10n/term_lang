@@ -30,9 +30,9 @@ macro_rules! debug_println {
 pub(crate) use debug_println;
 
 /// Solves a type equation.
-pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
+pub fn solve(ctx: &mut core::Context, e: Expr, t: &TyE) -> diag::Result<(Expr, TyE)> {
     let mut ctx = Context::new(ctx);
-    let u = match hm::algorithmj(&mut ctx, e.clone(), 0) {
+    let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
             e.with_span(s)
@@ -40,13 +40,14 @@ pub fn solve(ctx: &mut core::Context, e: &Expr, t: &TyE) -> diag::Result<TyE> {
             e
         }),
     }?;
-    let u = update(&mut ctx, u);
-    Ok(unify(&mut ctx, t.clone(), u, 0)?)
+    let u = update(&mut ctx, e_t);
+    let u = unify(&mut ctx, t.clone(), u, 0)?;
+    Ok((e, u))
 }
 
 /// Infers the most general type of an expression.
-pub fn infer(ctx: &mut Context<'_>, e: &Expr) -> diag::Result<TyE> {
-    let result = match hm::algorithmj(ctx, e.clone(), 0) {
+pub fn infer(ctx: &mut Context<'_>, e: Expr) -> diag::Result<(Expr, TyE)> {
+    let (e, e_t) = match hm::algorithmj(ctx, e, 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
             e.with_span(s)
@@ -54,43 +55,8 @@ pub fn infer(ctx: &mut Context<'_>, e: &Expr) -> diag::Result<TyE> {
             e
         }),
     }?;
-    let t = generalize(ctx, result, &mut Default::default());
-    Ok(t)
-}
-
-pub fn infer_partial(ctx: &mut Context<'_>, e: &Expr) -> diag::Result<TyE> {
-    let result = match hm::algorithmj(ctx, e.clone(), 0) {
-        Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
-            e.with_span(s)
-        } else {
-            e
-        }),
-    }?;
-    Ok(result)
-}
-
-pub fn infer_recursive(ctx: &mut Context<'_>, id: VarId, e: &Expr) -> diag::Result<TyE> {
-    let ut = {
-        let v = TyE::pure(ctx.new_ty_var());
-        let f = ctx.new_ef_var();
-        TyE::simple(Ty::Func(v.clone().into(), v.into()).into(), f)
-    };
-
-    ctx.typings.push(vec![(Expr::Var(id), ut)]);
-    let result = hm::algorithmj(ctx, e.clone(), 0);
-    ctx.typings.pop();
-
-    let t = match result {
-        Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
-            e.with_span(s)
-        } else {
-            e
-        }),
-    }?;
-    let t = generalize(ctx, t, &mut Default::default());
-    Ok(t)
+    let t = generalize(ctx, e_t, &mut Default::default());
+    Ok((e, t))
 }
 
 /// Checks that a set of type parameters are valid.
