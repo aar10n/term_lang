@@ -1,5 +1,5 @@
 [package]
-name = "term_rewrite_csp"
+name = "term_rewrite"
 version = "0.1.0"
 edition = "2021"
 

@@ -670,8 +670,7 @@ impl Lower for ast::HandleAlt {
         use core::EfAlt;
         let ef = self.ef.lower(ctx)?;
         let expr = self.expr.lower(ctx)?;
-        let handler = ctx.reserve_handler_slot();
-        Ok(EfAlt { ef, expr, handler })
+        Ok(EfAlt { ef, expr })
     }
 }
 

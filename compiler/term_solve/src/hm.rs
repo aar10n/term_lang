@@ -7,7 +7,7 @@ use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
 
 use either::*;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use type_env::TSet;
 
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<(Expr, TyE)> {
@@ -62,17 +62,13 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     id.pretty_string(ctx),
                     t.pretty_string(ctx)
                 );
-                return Ok((e, t));
+                return Ok((Var(id), t));
             }
 
-            let (res_e, u) = algorithmj(ctx, e, level + 1)?;
-            let res_t = crate::unify(ctx, t, u, level + 1)?;
-            debug_println!(
-                "{tab}[var] done: {} : {}",
-                res_e.pretty_string(ctx),
-                res_t.pretty_string(ctx)
-            );
-            (res_e, res_t)
+            let (e, e_t) = algorithmj(ctx, e, level + 1)?;
+            let e_t = crate::unify(ctx, t, e_t, level + 1)?;
+            debug_println!("{tab}[var] done: {}", e_t.pretty_string(ctx));
+            (Var(id), e_t)
         }
         Record(fields) => {
             let mut es = BTreeMap::new();
@@ -223,12 +219,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             debug_println!("{tab}[case] done: {}", result.pretty_string(ctx));
             (Case(e.into(), new_alts), result)
         }
-        Handle(box e, alts) => {
-            if alts.is_none() {
-                return algorithmj(ctx, e, level + 1);
-            }
-
-            let alts = alts.unwrap();
+        Handle(box e, Some(alts)) => {
             debug_println!(
                 "{tab}[han] solving: handle {} with \n\t{}",
                 e.pretty_string(ctx),
@@ -237,19 +228,20 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
+
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
             let (e_t, e_f, e_cs) = e_t.into_tuple();
 
             let mut new_alts = vec![];
             let mut fs = e_f.into_set();
-            for (f, e, hslot) in alts.into_iter().map(|a| (a.ef, a.expr, a.handler)) {
+            for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
                     "{tab}[han] solving: {} ~> {}",
                     f.pretty_string(ctx),
                     e.pretty_string(ctx),
                 );
 
-                let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
+                let (e, e_t) = algorithmj(ctx, e, level + 1)?;
                 if f.is_pure() {
                     continue;
                 }
@@ -263,15 +255,45 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     e_t.pretty_string(ctx),
                 );
 
-                new_alts.push(EfAlt {
-                    ef: f.clone(),
-                    expr: e,
-                    handler: hslot,
-                });
-
                 // remove handled effects from the set
                 for f in f.clone().into_set() {
                     fs.remove(&f);
+                }
+
+                let handler = Some(e.clone());
+                new_alts.push(EfAlt { ef: f, expr: e });
+            }
+
+            let result = TyE::new(e_t, Ef::from(fs), e_cs);
+            let result = crate::update(ctx, result);
+            debug_println!("{tab}[han] done: {} ", result.pretty_string(ctx));
+            (Handle(e.into(), Some(new_alts)), result)
+        }
+        Handle(box e, None) => {
+            debug_println!(
+                "{tab}[han] solving: handle default {}",
+                e.pretty_string(ctx)
+            );
+
+            let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
+            let (e_t, e_f, e_cs) = e_t.into_tuple();
+
+            let mut new_alts = vec![];
+            let mut fs = BTreeSet::new();
+            for f in e_f.into_set().into_iter() {
+                if let Ef::Effect(ef_id, ts) = f {
+                    let ef = ctx.effects[&ef_id].clone();
+                    let ef = ef.borrow();
+                    if let Some(var_id) = ef.default {
+                        new_alts.push(EfAlt {
+                            ef: Ef::Effect(ef_id, ts),
+                            expr: Expr::Var(var_id),
+                        });
+                    } else {
+                        fs.insert(Ef::Effect(ef_id, ts));
+                    }
+                } else {
+                    fs.insert(f);
                 }
             }
 

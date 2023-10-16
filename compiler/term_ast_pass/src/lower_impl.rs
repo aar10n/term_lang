@@ -49,7 +49,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
         if is_default {
             let effect = self.ctx.effects.get(&handler.effect_id).cloned().unwrap();
             let mut effect = effect.borrow_mut();
-            effect.default = Some(handler.id);
+            let var_id = self.ctx.ast.handler_var_ids[&handler.id];
+            effect.default = Some(var_id);
         }
 
         self.ctx

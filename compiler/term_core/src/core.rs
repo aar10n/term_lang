@@ -28,8 +28,6 @@ declare_id!(PolyVarId);
 declare_id!(MonoVarId);
 /// A variable id.
 declare_id!(VarId);
-/// A handler slot id.
-declare_id!(HSlotId);
 
 /// Top level id.
 declare_union_id!(Id {
@@ -310,7 +308,6 @@ pub struct Alt {
 pub struct EfAlt {
     pub ef: Ef,
     pub expr: Expr,
-    pub handler: HSlotId,
 }
 
 /// A name binding.
@@ -442,7 +439,7 @@ pub struct Effect {
     /// Effect handlers.
     pub handlers: Vec<HandlerId>,
     /// Default handler.
-    pub default: Option<HandlerId>,
+    pub default: Option<VarId>,
 }
 
 /// An effect operation.

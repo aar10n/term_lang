@@ -49,8 +49,6 @@ pub struct Context {
     pub handlers: BTreeMap<HandlerId, Rc<RefCell<Handler>>>,
     pub insts: BTreeMap<InstId, Rc<RefCell<Inst>>>,
 
-    pub handler_slots: Vec<Option<VarId>>,
-
     /// id -> name and span.
     id_names: BTreeMap<Id, (Ustr, Span)>,
     /// Scoped namespaces tied to a parent (e.g. class methods, effect ops).
@@ -73,8 +71,6 @@ impl Context {
             effects: BTreeMap::default(),
             handlers: BTreeMap::default(),
             insts: BTreeMap::default(),
-
-            handler_slots: vec![],
 
             id_names: BTreeMap::default(),
             scopes: BTreeMap::default(),
@@ -192,12 +188,6 @@ impl Context {
             .get(&parent_id)
             .and_then(|ns| ns.names.get(name))
             .copied()
-    }
-
-    pub fn reserve_handler_slot(&mut self) -> HSlotId {
-        let id = self.handler_slots.len();
-        self.handler_slots.push(None);
-        HSlotId::new(id)
     }
 }
 

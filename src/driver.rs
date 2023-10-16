@@ -5,7 +5,7 @@ use term_core as core;
 use term_diag as diag;
 use term_parse as parse;
 use term_print as print;
-use term_rewrite_csp as rewrite;
+use term_rewrite as rewrite;
 use term_solve as solve;
 
 use ast::ItemKind;
@@ -43,15 +43,11 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     let phase2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, phase2) {
-        // ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
-    // ctx.print_stdout(&());
-
     let phase3 = compose![pass::ty_check];
     if let Err(errs) = pass::apply(&mut ctx, &mut module, phase3) {
-        // ctx.print_stdout(&());
         return Err(Report::from(errs));
     }
 
