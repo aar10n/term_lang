@@ -13,8 +13,8 @@ use common::source::{SourceFile, SourceId, SourceMap};
 use common::span::Span;
 use core::{Context, Expr, Ty, TyE};
 use diag::{IntoDiagnostic, Report};
+use pass::ast_lower::Lower;
 use pass::compose;
-use pass::lower::Lower;
 use print::ansi::{GREEN, RESET};
 use print::{PrettyPrint, PrettyString};
 

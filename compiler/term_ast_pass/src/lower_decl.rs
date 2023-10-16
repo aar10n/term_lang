@@ -1,4 +1,4 @@
-use crate::{lower, Context, PassResult, UnresolvedNameErr};
+use crate::{ast_lower, Context, PassResult, UnresolvedNameErr};
 use term_ast as ast;
 use term_core as core;
 use term_diag as diag;
@@ -7,9 +7,9 @@ use term_solve as solve;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
+use ast_lower::Lower;
 use core::{Ef, TyE};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
-use lower::Lower;
 use print::{PrettyPrint, PrettyString};
 use std::cell::RefCell;
 
@@ -45,8 +45,6 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
 
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
         let (data, defs) = data.lower(&mut self.ctx)?;
-        solve::check_valid_type_params(&mut self.ctx, &data.params, &data.constraints)?;
-
         self.ctx.datas.insert(data.id, RefCell::new(data).into());
         self.register_defs(defs);
         Ok(())
@@ -54,7 +52,6 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerDeclVisitor<'_, 'ast> {
 
     fn visit_effect_decl(&mut self, effect_decl: &mut EffectDecl) -> diag::Result<()> {
         let (effect, defs) = effect_decl.lower(&mut self.ctx)?;
-        solve::check_valid_type_params(&mut self.ctx, &effect.params, &effect.constraints)?;
 
         self.ctx
             .effects

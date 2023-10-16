@@ -1,4 +1,4 @@
-use crate::{lower, Context, PassResult, UnresolvedNameErr};
+use crate::{ast_lower, Context, PassResult, UnresolvedNameErr};
 use term_ast as ast;
 use term_core as core;
 use term_diag as diag;
@@ -7,9 +7,9 @@ use term_solve as solve;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
+use ast_lower::Lower;
 use core::TyE;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
-use lower::Lower;
 use print::{PrettyPrint, PrettyString};
 use std::cell::RefCell;
 

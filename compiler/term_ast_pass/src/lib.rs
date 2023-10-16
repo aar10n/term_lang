@@ -2,9 +2,9 @@
 #![feature(trait_alias)]
 #![feature(let_chains)]
 #![feature(box_patterns)]
+pub mod ast_lower;
 mod collect;
 mod context;
-pub mod lower;
 mod lower_decl;
 mod lower_expr;
 mod lower_impl;

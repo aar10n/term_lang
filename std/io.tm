@@ -30,6 +30,7 @@ default handler stdio for IO
     ;
 
 
+# println : String -> () ~ IO
 println s = 
     handle 
         case s
@@ -41,5 +42,4 @@ println s =
 
 
 # the effect operator `~` binds default handers to effects in the applied expression
-#foo () = println "hi"
 bar () = ~println "hi"

@@ -1,4 +1,4 @@
-use crate::{lower, Context, PassResult};
+use crate::{ast_lower, Context, PassResult};
 use term_ast as ast;
 use term_core as core;
 use term_diag as diag;
@@ -7,9 +7,9 @@ use term_solve as solve;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
+use ast_lower::Lower;
 use core::{Def, Id, TyE, VarId};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
-use lower::Lower;
 use print::{PrettyPrint, PrettyString};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -56,6 +56,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for TyCheckVisitor<'_, 'ctx> {
         let (body, ty) = solve::infer(&mut self.ctx.solve, def.body.clone())?;
         println!("updated body: {}", body.pretty_string(self.ctx));
         println!("type inferred as: {}", ty.pretty_string(self.ctx));
+        def.body = body;
         def.ty = ty;
         Ok(())
     }
