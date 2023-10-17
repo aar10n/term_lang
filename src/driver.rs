@@ -32,7 +32,9 @@ pub fn new_context() -> Context {
 pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
     let file = core.sources.get(source_id).unwrap();
     let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
+
     let ast = &mut ast::Context::new();
+    let solve = &mut solve::TyContext::new();
 
     pass::collect(ast, core, module).into_result()?;
     pass::resolve(ast, core, module).into_result()?;

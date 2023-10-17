@@ -37,12 +37,13 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
             // );
 
             if ty_occurs(&Mono(x), &t) {
-                return Err(
-                    format!("recursive type `{}` contains itself", t.pretty_string(ctx))
-                        .into_diagnostic(),
-                );
+                return Err(format!(
+                    "recursive type `{}` contains itself",
+                    t.pretty_string(ctx.core)
+                )
+                .into_diagnostic());
             }
-            let result = ctx.ty_set.union(t.clone(), Mono(x));
+            let result = ctx.solve.ty_set.union(t.clone(), Mono(x));
             // debug_println!(
             //     "union({}, {}) -> {}",
             //     t.pretty_string(ctx),
@@ -102,15 +103,15 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
         (t1, t2) => {
             println!(
                 "expected type `{}`, found `{}`",
-                t1.pretty_string(ctx),
-                t2.pretty_string(ctx),
+                t1.pretty_string(ctx.core),
+                t2.pretty_string(ctx.core),
             );
             panic!();
 
             return Err(format!(
                 "expected type `{}`, found `{}`",
-                t1.pretty_string(ctx),
-                t2.pretty_string(ctx),
+                t1.pretty_string(ctx.core),
+                t2.pretty_string(ctx.core),
             )
             .into_diagnostic());
         }
@@ -120,7 +121,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
 pub fn update(ctx: &mut Context<'_>, t: Ty) -> Ty {
     use Ty::*;
     match t {
-        Mono(x) => ctx.ty_set.find(Mono(x)),
+        Mono(x) => ctx.solve.ty_set.find(Mono(x)),
         Rec(id, box t) => Rec(id, crate::update(ctx, t).into()),
         Data(id, ts) => Data(id, ts.into_iter().map(|t| crate::update(ctx, t)).collect()),
         Func(box t1, box t2) => Func(crate::update(ctx, t1).into(), crate::update(ctx, t2).into()),
@@ -142,10 +143,10 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
             Some(&id) => TyE::pure(Mono(id)),
             Some(_) => panic!("invalid poly var"),
             None => {
-                let t = ctx.new_mono_var();
+                let t = ctx.core.ids.next_mono_var_id();
                 ps.insert(id, t);
                 let t = Ty::Mono(t);
-                ctx.ty_set.insert(t.clone());
+                ctx.solve.ty_set.insert(t.clone());
                 TyE::pure(t)
             }
         },
@@ -188,7 +189,7 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
             Some(&id) => TyE::pure(Poly(id)),
             Some(_) => panic!("invalid mono var"),
             None => {
-                let t = ctx.ids.next_poly_var_id();
+                let t = ctx.core.ids.next_poly_var_id();
                 ps.insert(id, t);
                 TyE::pure(Ty::Poly(t))
             }

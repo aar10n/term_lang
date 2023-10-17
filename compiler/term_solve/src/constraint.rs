@@ -9,7 +9,7 @@ use print::{PrettyPrint, PrettyString};
 
 use std::collections::HashMap;
 
-pub fn update(ctx: &mut Context<'_>, c: Constraint) -> Constraint {
+pub fn update(ctx: &mut Context, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
@@ -24,7 +24,7 @@ pub fn update(ctx: &mut Context<'_>, c: Constraint) -> Constraint {
 }
 
 pub fn instantiate(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context,
     c: Constraint,
     ps: &mut HashMap<PolyVarId, MonoVarId>,
 ) -> Constraint {
@@ -45,7 +45,7 @@ pub fn instantiate(
 }
 
 pub fn generalize(
-    ctx: &mut Context<'_>,
+    ctx: &mut Context,
     c: Constraint,
     ps: &mut HashMap<MonoVarId, PolyVarId>,
 ) -> Constraint {
@@ -65,7 +65,7 @@ pub fn generalize(
     }
 }
 
-pub fn cannonicalize(ctx: &mut Context<'_>, c: Constraint) -> Constraint {
+pub fn cannonicalize(ctx: &mut Context, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
@@ -115,12 +115,12 @@ pub fn subst_ef(r: &Ef, x: &Ef, c: Constraint) -> Constraint {
 pub mod cs {
     use super::*;
 
-    pub fn update(ctx: &mut Context<'_>, cs: Vec<Constraint>) -> Vec<Constraint> {
+    pub fn update(ctx: &mut Context, cs: Vec<Constraint>) -> Vec<Constraint> {
         cs.into_iter().map(|c| super::update(ctx, c)).collect()
     }
 
     pub fn instantiate(
-        ctx: &mut Context<'_>,
+        ctx: &mut Context,
         cs: Vec<Constraint>,
         ps: &mut HashMap<PolyVarId, MonoVarId>,
     ) -> Vec<Constraint> {
@@ -130,7 +130,7 @@ pub mod cs {
     }
 
     pub fn generalize(
-        ctx: &mut Context<'_>,
+        ctx: &mut Context,
         cs: Vec<Constraint>,
         ps: &mut HashMap<MonoVarId, PolyVarId>,
     ) -> Vec<Constraint> {
@@ -139,7 +139,7 @@ pub mod cs {
             .collect()
     }
 
-    pub fn cannonicalize(ctx: &mut Context<'_>, mut cs: Vec<Constraint>) -> Vec<Constraint> {
+    pub fn cannonicalize(ctx: &mut Context, mut cs: Vec<Constraint>) -> Vec<Constraint> {
         cs.sort();
         cs.dedup();
         cs.into_iter()

@@ -29,12 +29,50 @@ macro_rules! debug_println {
 }
 pub(crate) use debug_println;
 
+pub struct Context<'ctx> {
+    pub core: &'ctx mut core::Context,
+    pub solve: &'ctx mut context::TyContext,
+}
+
+impl<'ctx> Context<'ctx> {
+    fn new(core: &'ctx mut core::Context, solve: &'ctx mut context::TyContext) -> Self {
+        Self { core, solve }
+    }
+
+    fn new_ty_var(&mut self) -> Ty {
+        let id = self.core.ids.next_mono_var_id();
+        self.solve.ty_set.insert(Ty::Mono(id));
+        Ty::Mono(id)
+    }
+
+    fn new_ef_var(&mut self) -> Ef {
+        let id = self.core.ids.next_mono_var_id();
+        self.solve.ef_set.insert(Ef::Mono(id));
+        Ef::Mono(id)
+    }
+}
+
+impl<'ctx> From<(&'ctx mut core::Context, &'ctx mut context::TyContext)> for Context<'ctx> {
+    fn from((core, solve): (&'ctx mut core::Context, &'ctx mut context::TyContext)) -> Self {
+        Self::new(core, solve)
+    }
+}
+
+//
+//
+//
+
 /// Solves a type equation.
-pub fn solve(ctx: &mut core::Context, e: Expr, t: &TyE) -> diag::Result<(Expr, TyE)> {
-    let mut ctx = Context::new(ctx);
+pub fn solve(
+    core: &mut core::Context,
+    solve: &mut context::TyContext,
+    e: Expr,
+    t: &TyE,
+) -> diag::Result<(Expr, TyE)> {
+    let mut ctx = Context::new(core, solve);
     let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
+        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
             e.with_span(s)
         } else {
             e
@@ -46,10 +84,10 @@ pub fn solve(ctx: &mut core::Context, e: Expr, t: &TyE) -> diag::Result<(Expr, T
 }
 
 /// Infers the most general type of an expression.
-pub fn infer(ctx: &mut Context<'_>, e: Expr) -> diag::Result<(Expr, TyE)> {
+pub fn infer<'ctx>(ctx: &mut Context<'ctx>, e: Expr) -> diag::Result<(Expr, TyE)> {
     let (e, e_t) = match hm::algorithmj(ctx, e, 0) {
         Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.spans.last().copied() {
+        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
             e.with_span(s)
         } else {
             e

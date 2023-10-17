@@ -1,8 +1,9 @@
 use crate::{debug_println, ty, type_env, Context};
-use term_core::*;
+use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
+use core::*;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
 
@@ -29,30 +30,34 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         Sym(s) => todo!(),
         Var(id) => {
             debug_println!("{tab}[var] solving: {}", id.pretty_string(ctx));
-            let (e, t) = if let Some(t) = ctx.typings.get(&Expr::Var(id)).cloned() {
+            let (e, t) = if let Some(t) = ctx.solve.typings.get(&Expr::Var(id)).cloned() {
                 let t = crate::update(ctx, t);
                 (Expr::Var(id), crate::cannonicalize(ctx, t))
-            } else if let Some(d) = ctx.defs.get(&id).cloned() {
+            } else if let Some(d) = ctx.core.defs.get(&id).cloned() {
                 let d = d.borrow();
                 let t = crate::instantiate(ctx, d.ty.clone(), &mut HashMap::new());
-                ctx.typings.insert(Expr::Var(id), t.clone());
+                ctx.solve.typings.insert(Expr::Var(id), t.clone());
                 (d.body.clone(), t)
             } else {
                 println!("-------");
-                ctx.typings.print_stdout(ctx);
+                ctx.solve.typings.print_stdout(&ctx.core);
                 println!("-------");
                 panic!();
-                return if let Some(span) = ctx.id_as_span(id) {
+                return if let Some(span) = ctx.core.id_as_span(id) {
                     Diagnostic::error(
-                        format!("no definition found for name: {}", id.pretty_string(ctx)),
+                        format!(
+                            "no definition found for name: {}",
+                            id.pretty_string(ctx.core)
+                        ),
                         span,
                     )
                     .into_err()
                 } else {
-                    Err(
-                        format!("no definition found for name: {}", id.pretty_string(ctx))
-                            .into_diagnostic(),
+                    Err(format!(
+                        "no definition found for name: {}",
+                        id.pretty_string(ctx.core)
                     )
+                    .into_diagnostic())
                 };
             };
 
@@ -115,10 +120,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
 
             let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
-            ctx.typings.push(vars);
+            ctx.solve.typings.push(vars);
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
             let (ret_t, ret_f, ret_cs) = e_t.into_tuple();
-            ctx.typings.pop();
+            ctx.solve.typings.pop();
 
             let pt = ty::update(ctx, t);
             let result = TyE::new(
@@ -142,16 +147,16 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let f = ctx.new_ef_var();
             let ft = TyE::pure_func(v1.clone(), v2.clone()).with_ef(f);
 
-            ctx.typings.push(vec![(Expr::Var(x), ft.clone())]);
+            ctx.solve.typings.push(vec![(Expr::Var(x), ft.clone())]);
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
-            ctx.typings.pop();
+            ctx.solve.typings.pop();
 
             let e_t = crate::unify(ctx, ft, e_t, level + 1)?;
             let (e1, res_t) = if let Some(box e1) = e1 {
                 debug_println!("{tab}{TABWIDTH}[letr] solving in {}", e1.pretty_string(ctx));
-                ctx.typings.push(vec![(Expr::Var(x), e_t)]);
+                ctx.solve.typings.push(vec![(Expr::Var(x), e_t)]);
                 let (e1, e1_t) = algorithmj(ctx, e1.clone(), level + 1)?;
-                ctx.typings.pop();
+                ctx.solve.typings.pop();
                 (Some(e1.into()), e1_t)
             } else {
                 (None, e_t)
@@ -170,14 +175,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
             let t = TyE::pure(t);
 
-            ctx.typings.push(vars);
+            ctx.solve.typings.push(vars);
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
-            ctx.typings.pop();
+            ctx.solve.typings.pop();
 
             let (e1, res_t) = if let Some(box e1) = e1 {
-                ctx.typings.push(vec![(p.clone(), e_t)]);
+                ctx.solve.typings.push(vec![(p.clone(), e_t)]);
                 let (e1, e1_t) = algorithmj(ctx, e1.clone(), level + 1)?;
-                ctx.typings.pop();
+                ctx.solve.typings.pop();
                 (Some(e1.into()), e1_t)
             } else {
                 (None, e_t)
@@ -204,10 +209,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
                 crate::unify(ctx, e_t.clone(), TyE::pure(t), level + 1)?;
 
-                ctx.typings.push(vars);
+                ctx.solve.typings.push(vars);
                 let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
                 let (e_t, e_f, _) = e_t.into_tuple();
-                ctx.typings.pop();
+                ctx.solve.typings.pop();
 
                 res_t = ty::unify(ctx, res_t, e_t, level + 1)?;
                 res_f = res_f | e_f;
@@ -282,7 +287,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let mut fs = BTreeSet::new();
             for f in e_f.into_set().into_iter() {
                 if let Ef::Effect(ef_id, ts) = f {
-                    let ef = ctx.effects[&ef_id].clone();
+                    let ef = ctx.core.effects[&ef_id].clone();
                     let ef = ef.borrow();
                     if let Some(var_id) = ef.default {
                         new_alts.push(EfAlt {
@@ -328,9 +333,9 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         }
 
         Span(s, box e) => {
-            ctx.spans.push(s);
+            ctx.solve.spans.push(s);
             let result = algorithmj(ctx, e, level)?;
-            ctx.spans.pop();
+            ctx.solve.spans.pop();
             result
         }
     };
@@ -363,7 +368,7 @@ pub fn solve_collect_bindings(
             // the outer leftmost expression must be a data constructor reference
             let (t1, vs1) = if let Expr::Var(id) = e1 {
                 // id is a data constructor. get the type
-                let def = ctx.defs.get(id).cloned().unwrap();
+                let def = ctx.core.defs.get(id).cloned().unwrap();
                 let def = def.borrow();
                 let t = crate::instantiate(ctx, def.ty.clone(), &mut HashMap::default());
                 (t.ty, vec![])
@@ -384,7 +389,7 @@ pub fn solve_collect_bindings(
             Ok((t, vs1.into_iter().chain(vs2).collect()))
         }
         Span(_, box e) => solve_collect_bindings(ctx, e, level),
-        _ => format!("invalid pattern: `{}`", p.pretty_string(ctx)).into_err(),
+        _ => format!("invalid pattern: `{}`", p.pretty_string(ctx.core)).into_err(),
     }
 }
 
@@ -392,7 +397,7 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
     use Ef::*;
     Ok(match f {
         Effect(ef_id, ts) => {
-            let effect = ctx.effects.get(ef_id).cloned().unwrap();
+            let effect = ctx.core.effects.get(ef_id).cloned().unwrap();
             let effect = effect.borrow();
             let mut t = crate::instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
             t
@@ -400,8 +405,8 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
         Union(fs) => {
             // TODO: lower all effects and create a handler super-type by
             // combining all the records into one.
-            format!("invalid effect pattern: `{}`", f.pretty_string(ctx)).into_err()?
+            format!("invalid effect pattern: `{}`", f.pretty_string(ctx.core)).into_err()?
         }
-        _ => return format!("expected effect, found `{}`", f.pretty_string(ctx)).into_err(),
+        _ => return format!("expected effect, found `{}`", f.pretty_string(ctx.core)).into_err(),
     })
 }

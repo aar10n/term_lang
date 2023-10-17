@@ -45,7 +45,12 @@ where
             if ty == *key {
                 continue;
             }
-            writeln!(out, "{}: {}", key.pretty_string(ctx), ty.pretty_string(ctx))?;
+            writeln!(
+                out,
+                "{}: {}",
+                key.pretty_string(ctx.core),
+                ty.pretty_string(ctx.core)
+            )?;
         }
 
         Ok(())
