@@ -35,13 +35,13 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
     let ast = &mut ast::Context::new();
 
     pass::collect(ast, core, module).into_result()?;
-    let var_deps = pass::resolve(ast, core, module).into_result()?;
+    pass::resolve(ast, core, module).into_result()?;
     pass::lower_all(ast, core, module).into_result()?;
     // module.print_stdout(&ast);
-    core.print_stdout(&());
+    // core.print_stdout(&());
 
     println!("Dependencies:");
-    for (id, deps) in var_deps {
+    for (id, deps) in &core.dep_graph {
         println!(
             "  {} -> {}",
             id.pretty_string(core),
@@ -52,11 +52,7 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
         );
     }
 
-    // for item in module.items {
-    //     if let ItemKind::Command(name, args) = item.kind {
-    //         crate::command::eval_command(&mut ctx, name, &args)?;
-    //     }
-    // }
+    // let entry = core.global_names[&ustr::ustr("main")].var_id();
 
     println!("{GREEN}Done{RESET}");
     Ok(())

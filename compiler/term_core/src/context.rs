@@ -2,7 +2,7 @@ use crate::core::*;
 use term_common::{declare_id_collection, declare_union_id, source::SourceMap, span::Spanned};
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
@@ -38,6 +38,7 @@ pub struct Context {
     pub ids: Ids,
     pub sources: SourceMap,
     pub builtins: UstrSet,
+    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
 
     pub global_names: UstrMap<Id>,
     pub global_types: UstrMap<Id>,
@@ -61,6 +62,7 @@ impl Context {
             ids: Ids::default(),
             sources: SourceMap::default(),
             builtins: UstrSet::default(),
+            dep_graph: BTreeMap::default(),
 
             global_names: UstrMap::default(),
             global_types: UstrMap::default(),

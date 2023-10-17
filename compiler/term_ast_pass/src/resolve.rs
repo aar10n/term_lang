@@ -22,7 +22,6 @@ struct ResolveVisitor<'ctx> {
     ast: &'ctx mut ast::Context,
     core: &'ctx mut core::Context,
 
-    graph: BTreeMap<VarId, BTreeSet<VarId>>,
     scopes: Vec<Scope>,
     scope_id: Option<Id>,
     current_var: Option<VarId>,
@@ -34,7 +33,6 @@ impl<'ctx> ResolveVisitor<'ctx> {
             ast,
             core,
 
-            graph: BTreeMap::default(),
             scopes: vec![Scope::default()],
             scope_id: None,
             current_var: None,
@@ -139,7 +137,11 @@ impl<'ctx> ResolveVisitor<'ctx> {
         // first try resolving in local vars
         for scope in self.scopes.iter().rev() {
             if let Some(id) = scope.vars.get(&name.raw) {
-                return Ok(Some((*id, Vis::Local)));
+                if self.core.global_names.contains_key(&name.raw) {
+                    return Ok(Some((*id, Vis::Global)));
+                } else {
+                    return Ok(Some((*id, Vis::Local)));
+                }
             }
         }
 
@@ -328,8 +330,8 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         }
 
         if let Some((id, vis)) = self.resolve_var(ident)? {
-            if let Some(parent_id) = self.current_var {
-                self.graph.entry(parent_id).or_default().insert(id);
+            if let Some(parent_id) = self.current_var && matches!(vis, Vis::Global) {
+                self.core.dep_graph.entry(parent_id).or_default().insert(id);
             }
 
             ident.id = Some(id.into());
@@ -360,7 +362,7 @@ pub fn resolve<'a>(
     ast: &'a mut ast::Context,
     core: &'a mut core::Context,
     module: &'a mut Module,
-) -> PassResult<BTreeMap<VarId, BTreeSet<VarId>>> {
+) -> PassResult {
     let mut results = vec![];
     let mut resolver = ResolveVisitor::new(ast, core);
     for item in &mut module.items {
@@ -370,7 +372,7 @@ pub fn resolve<'a>(
     }
 
     if results.is_empty() {
-        PassResult::Ok(resolver.graph)
+        PassResult::Ok(())
     } else {
         PassResult::Err(results)
     }
