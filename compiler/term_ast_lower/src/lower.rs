@@ -1,4 +1,5 @@
-use crate::*;
+// use crate::*;
+use super::Context;
 use term_ast as ast;
 use term_ast::visit::{Visit, Visitor};
 use term_core as core;
@@ -19,10 +20,15 @@ pub trait Lower {
     type Target: Clone;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target>;
-}
 
-pub trait LowerInto<T> {
-    fn lower_into(&self, ctx: &mut Context) -> diag::Result<T>;
+    fn lower_ast_core(
+        &self,
+        ast: &mut ast::Context,
+        core: &mut core::Context,
+    ) -> diag::Result<Self::Target> {
+        let mut ctx = (ast, core).into();
+        self.lower(&mut ctx)
+    }
 }
 
 impl<T> Lower for Box<T>
@@ -156,7 +162,7 @@ impl Lower for ast::DataDecl {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Data, Def, Ty, TyE};
         let id = self.name.id.unwrap().data_id();
-        let span = ctx.id_as_span(id).unwrap();
+        let span = ctx.core.id_as_span(id).unwrap();
         let (params, constraints) = self.ty_params.lower(ctx)?;
         let cons = self.cons.lower(ctx)?;
 
@@ -192,7 +198,8 @@ impl Lower for ast::DataConDecl {
         use core::DataCon;
         let id = unwrap_resolved_ident(&self.name)?.data_con_id();
         let var_id = ctx.ast.con_var_ids[&id];
-        ctx.register_id_name(var_id, self.name.raw, self.name.span());
+        ctx.core
+            .register_id_name(var_id, self.name.raw, self.name.span());
 
         let fields = self.fields.lower(ctx)?;
         Ok(DataCon { id, var_id, fields })
@@ -375,7 +382,7 @@ impl Lower for ast::ClassInst {
         let mut methods = vec![];
         for def in self.members.lower(ctx)? {
             methods.push(def.id);
-            ctx.defs.insert(def.id, RefCell::new(def).into());
+            ctx.core.defs.insert(def.id, RefCell::new(def).into());
         }
 
         Ok(Inst {
@@ -427,7 +434,7 @@ impl Lower for ast::VarDecl {
         let id = self.name.id.unwrap().decl_id();
         let var_id = ctx.ast.decl_var_ids[&id];
         let name = self.name.raw;
-        if !ctx.builtins.contains(&name) {
+        if !ctx.core.builtins.contains(&name) {
             return Ok(None);
         }
 
@@ -569,9 +576,9 @@ impl Lower for ast::Pat {
             PatKind::Unit => Expr::Lit(Lit::Unit),
             PatKind::Wildcard => {
                 // ignored temporary variable
-                let v = ctx.ids.next_var_id();
+                let v = ctx.core.ids.next_var_id();
                 let name = format!("w_{:06x}", self.span.hash());
-                ctx.register_id_name(v, ustr(&name), Span::default());
+                ctx.core.register_id_name(v, ustr(&name), Span::default());
                 Expr::Var(v)
             }
             PatKind::DataCon(n, ps) => {
@@ -844,7 +851,7 @@ fn primitive(t: &str) -> core::Ty {
 }
 
 fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
-    expect_id_defined(&ctx.global_names, "variable", name, |id| match id {
+    expect_id_defined(&ctx.core.global_names, "variable", name, |id| match id {
         Id::DataCon(id) => Some(ctx.ast.con_var_ids[&id]),
         Id::Var(id) => Some(*id),
         Id::Decl(id) => ctx.ast.decl_var_ids.get(&id).copied(),
@@ -853,11 +860,11 @@ fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
 }
 
 fn expect_data(ctx: &Context, name: &str) -> diag::Result<DataId> {
-    expect_id_defined(&ctx.global_types, "data", name, Id::as_data)
+    expect_id_defined(&ctx.core.global_types, "data", name, Id::as_data)
 }
 
 fn expect_data_con(ctx: &Context, name: &str) -> diag::Result<DataConId> {
-    expect_id_defined(&ctx.global_names, "constructor", name, Id::as_data_con)
+    expect_id_defined(&ctx.core.global_names, "constructor", name, Id::as_data_con)
 }
 
 fn expect_id_defined<T: Into<Id>>(

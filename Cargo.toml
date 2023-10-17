@@ -11,6 +11,7 @@ members = ["compiler/*"]
 [dependencies]
 term_ast = { path = "compiler/term_ast" }
 term_ast_pass = { path = "compiler/term_ast_pass" }
+term_ast_lower = { path = "compiler/term_ast_lower" }
 term_common = { path = "compiler/term_common" }
 term_core = { path = "compiler/term_core" }
 term_diag = { path = "compiler/term_diag" }

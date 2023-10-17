@@ -1,4 +1,5 @@
 use term_ast as ast;
+use term_ast_lower as lower;
 use term_ast_pass as pass;
 use term_common as common;
 use term_core as core;
@@ -11,12 +12,13 @@ use term_solve as solve;
 use ast::ItemKind;
 use common::source::{SourceFile, SourceId, SourceMap};
 use common::span::Span;
-use core::{Context, Expr, Ty, TyE};
+use core::{Context, Expr, Ty, TyE, VarId};
 use diag::{IntoDiagnostic, Report};
-use pass::ast_lower::Lower;
-use pass::compose;
+use lower::Lower;
 use print::ansi::{GREEN, RESET};
 use print::{PrettyPrint, PrettyString};
+
+use std::collections::BTreeMap;
 
 pub fn new_context() -> Context {
     let mut ctx = Context::new();
@@ -28,34 +30,28 @@ pub fn new_context() -> Context {
 }
 
 pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
-    let mut ast = ast::Context::new();
-    let mut ctx = pass::Context::new(&mut ast, core);
+    let file = core.sources.get(source_id).unwrap();
+    let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
+    let ast = &mut ast::Context::new();
 
-    let file = ctx.sources.get(source_id).unwrap();
-    let mut module = parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
+    let mut pass1 = pass::compose![pass::collect, pass::resolve];
+    pass1(ast, core, module).into_result()?;
 
-    let phase1 = compose![pass::collect, pass::resolve];
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase1) {
-        return Err(Report::from(errs));
+    module.print_stdout(&ast);
+
+    let mut pass2 = pass::compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
+    pass2(ast, core, module).into_result()?;
+
+    let deps = pass::solve_deps(ast, core, module).into_result()?;
+    for (id, deps) in deps {
+        println!("{} -> {:?}", id.pretty_string(core), deps);
     }
 
-    module.print_stdout(&ctx.ast);
-
-    let phase2 = compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase2) {
-        return Err(Report::from(errs));
-    }
-
-    let phase3 = compose![pass::ty_check];
-    if let Err(errs) = pass::apply(&mut ctx, &mut module, phase3) {
-        return Err(Report::from(errs));
-    }
-
-    for item in module.items {
-        if let ItemKind::Command(name, args) = item.kind {
-            crate::command::eval_command(&mut ctx, name, &args)?;
-        }
-    }
+    // for item in module.items {
+    //     if let ItemKind::Command(name, args) = item.kind {
+    //         crate::command::eval_command(&mut ctx, name, &args)?;
+    //     }
+    // }
 
     println!("{GREEN}Done{RESET}");
     Ok(())

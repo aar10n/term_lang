@@ -1,5 +1,6 @@
-use crate::{Context, PassResult, UnresolvedNameErr};
+use crate::{PassResult, UnresolvedNameErr};
 use term_ast as ast;
+use term_ast_lower as lower;
 use term_core as core;
 use term_diag as diag;
 
@@ -11,16 +12,20 @@ use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use std::ops::{Deref, DerefMut};
 use ustr::{Ustr, UstrMap};
 
-struct ResolveVisitor<'v, 'ast> {
-    ctx: &'v mut Context<'ast>,
+struct ResolveVisitor<'ctx> {
+    ast: &'ctx mut ast::Context,
+    core: &'ctx mut core::Context,
+
     scopes: Vec<Scope>,
     scope_id: Option<Id>,
 }
 
-impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
-    pub fn new(ctx: &'v mut Context<'ast>) -> Self {
+impl<'ctx> ResolveVisitor<'ctx> {
+    pub fn new(ast: &'ctx mut ast::Context, core: &'ctx mut core::Context) -> Self {
         Self {
-            ctx,
+            ast,
+            core,
+
             scopes: vec![Scope::default()],
             scope_id: None,
         }
@@ -43,13 +48,13 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
     where
         F: FnOnce(&Id) -> bool,
     {
-        match self.ctx.global_names.get(name) {
+        match self.core.global_names.get(name) {
             Some(id) if pred(&id) => Ok(*id),
             Some(id) => UnresolvedNameErr {
                 kind,
                 name: name.raw.to_string(),
                 span: name.span(),
-                conflict: self.ctx.id_as_span(*id),
+                conflict: self.core.id_as_span(*id),
             }
             .into_err(),
             None => UnresolvedNameErr {
@@ -71,13 +76,13 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
     where
         F: FnOnce(&Id) -> bool,
     {
-        match self.ctx.global_types.get(name) {
+        match self.core.global_types.get(name) {
             Some(id) if pred(&id) => Ok(*id),
             Some(id) => UnresolvedNameErr {
                 kind,
                 name: name.raw.to_string(),
                 span: name.span(),
-                conflict: self.ctx.id_as_span(*id),
+                conflict: self.core.id_as_span(*id),
             }
             .into_err(),
             None => UnresolvedNameErr {
@@ -101,13 +106,13 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         T: Into<ParentId> + Copy,
         F: FnOnce(&Id) -> bool,
     {
-        match self.ctx.resolve_scoped_name(parent_id, &name.raw) {
+        match self.core.resolve_scoped_name(parent_id, &name.raw) {
             Some(id) if pred(&id) => Ok(id),
             Some(id) => UnresolvedNameErr {
                 kind,
                 name: name.raw.to_string(),
                 span: name.span(),
-                conflict: self.ctx.id_as_span(id),
+                conflict: self.core.id_as_span(id),
             }
             .into_err(),
             None => UnresolvedNameErr {
@@ -129,27 +134,27 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
         }
 
         // now check the global namespace
-        if let Some(id) = self.ctx.global_names.get(&name.raw) {
+        if let Some(id) = self.core.global_names.get(&name.raw) {
             match *id {
                 Id::DataCon(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ctx.ast.con_var_ids.get(&id).unwrap()))
+                    Ok(Some(*self.ast.con_var_ids.get(&id).unwrap()))
                 }
-                Id::Decl(id) => match self.ctx.ast.decl_var_ids.get(&id) {
+                Id::Decl(id) => match self.ast.decl_var_ids.get(&id) {
                     Some(var_id) => Ok(Some(*var_id)),
                     None => {
                         // the name is declared but not defined
                         Diagnostic::error("name is declared but is not defined", name.span())
-                            .with_note("declared here", self.ctx.id_as_span(id).unwrap())
+                            .with_note("declared here", self.core.id_as_span(id).unwrap())
                             .into_err()
                     }
                 },
                 Id::Handler(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ctx.ast.handler_var_ids.get(&id).unwrap()))
+                    Ok(Some(*self.ast.handler_var_ids.get(&id).unwrap()))
                 }
                 Id::Var(id) => Ok(id.into()),
-                id => Diagnostic::error("expected variable", self.ctx.id_as_span(id).unwrap())
+                id => Diagnostic::error("expected variable", self.core.id_as_span(id).unwrap())
                     .with_inline_note("name is defined but is not a variable")
                     .into_err(),
             }
@@ -165,13 +170,13 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
             }
         }
 
-        match self.ctx.global_types.get(name) {
+        match self.core.global_types.get(name) {
             Some(id) if id.is_data() || id.is_poly_var() => Ok(Some(*id)),
             Some(id) => UnresolvedNameErr {
                 kind: "type",
                 name: name.raw.to_string(),
                 span: name.span(),
-                conflict: self.ctx.id_as_span(*id),
+                conflict: self.core.id_as_span(*id),
             }
             .into_err(),
             None => Ok(None),
@@ -179,9 +184,9 @@ impl<'v, 'ast> ResolveVisitor<'v, 'ast> {
     }
 }
 
-impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
+impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
     fn context(&mut self) -> &mut ast::Context {
-        self.ctx.ast
+        self.ast
     }
     fn push_scope(&mut self) {
         self.scopes.push(Scope::default())
@@ -272,8 +277,8 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
             ident.id = Some(id);
         } else if ident.raw.chars().next().unwrap().is_lowercase() {
             // implicit type variable
-            let id = self.ctx.ids.next_poly_var_id();
-            self.ctx.register_id_name(id, ident.raw, ident.span());
+            let id = self.core.ids.next_poly_var_id();
+            self.core.register_id_name(id, ident.raw, ident.span());
             ident.id = Some(id.into());
         } else {
             return UnresolvedNameErr {
@@ -298,7 +303,7 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for ResolveVisitor<'_, 'ast> {
         if let Some(id) = self.resolve_var(ident)? {
             ident.id = Some(id.into());
             Ok(())
-        } else if self.ctx.ast.ambiguous_names.contains(&ident.raw) {
+        } else if self.ast.ambiguous_names.contains(&ident.raw) {
             // ambiguous - resolve later
             ident.id = None;
             Ok(())
@@ -320,9 +325,13 @@ struct Scope {
     pub tys: UstrMap<PolyVarId>,
 }
 
-pub fn resolve<'v, 'ast>(ctx: &'v mut Context<'ast>, module: &'v mut Module) -> PassResult {
+pub fn resolve<'a>(
+    ast: &'a mut ast::Context,
+    core: &'a mut core::Context,
+    module: &'a mut Module,
+) -> PassResult {
     let mut results = vec![];
-    let mut resolver = ResolveVisitor::new(ctx);
+    let mut resolver = ResolveVisitor::new(ast, core);
     for item in &mut module.items {
         if let Err(e) = item.visit(&mut resolver) {
             results.push(e);
@@ -330,7 +339,7 @@ pub fn resolve<'v, 'ast>(ctx: &'v mut Context<'ast>, module: &'v mut Module) -> 
     }
 
     if results.is_empty() {
-        PassResult::Ok(vec![])
+        PassResult::Ok(())
     } else {
         PassResult::Err(results)
     }

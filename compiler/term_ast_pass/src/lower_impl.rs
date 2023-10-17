@@ -1,5 +1,6 @@
-use crate::{ast_lower, Context, PassResult, UnresolvedNameErr};
+use crate::PassResult;
 use term_ast as ast;
+use term_ast_lower as lower;
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -7,9 +8,9 @@ use term_solve as solve;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use ast_lower::Lower;
 use core::TyE;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
+use lower::Lower;
 use print::{PrettyPrint, PrettyString};
 use std::cell::RefCell;
 
@@ -17,43 +18,44 @@ use std::collections::BTreeMap;
 use std::ops::{Deref, DerefMut};
 use ustr::{Ustr, UstrMap};
 
-struct LowerImplVisitor<'v, 'ast> {
-    ctx: &'v mut Context<'ast>,
+struct LowerImplVisitor<'ctx> {
+    ast: &'ctx mut ast::Context,
+    core: &'ctx mut core::Context,
 }
 
-impl<'v, 'ast> LowerImplVisitor<'v, 'ast> {
-    pub fn new(ctx: &'v mut Context<'ast>) -> Self {
-        Self { ctx }
+impl<'ctx> LowerImplVisitor<'ctx> {
+    pub fn new(ast: &'ctx mut ast::Context, core: &'ctx mut core::Context) -> Self {
+        Self { ast, core }
     }
 
     pub fn register_defs(&mut self, defs: Vec<core::Def>) {
         for def in defs {
             println!(
                 "registering def {} : {}",
-                def.id.pretty_string(self.ctx),
-                def.ty.pretty_string(self.ctx)
+                def.id.pretty_string(self.core),
+                def.ty.pretty_string(self.core)
             );
-            self.ctx.defs.insert(def.id, RefCell::new(def).into());
+            self.core.defs.insert(def.id, RefCell::new(def).into());
         }
     }
 }
 
-impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
+impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerImplVisitor<'ctx> {
     fn context(&mut self) -> &mut ast::Context {
-        self.ctx.ast
+        self.ast
     }
 
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
         let is_default = handler.default;
-        let (handler, defs) = handler.lower(&mut self.ctx)?;
+        let (handler, defs) = handler.lower_ast_core(self.ast, self.core)?;
         if is_default {
-            let effect = self.ctx.effects.get(&handler.effect_id).cloned().unwrap();
+            let effect = self.core.effects.get(&handler.effect_id).cloned().unwrap();
             let mut effect = effect.borrow_mut();
-            let var_id = self.ctx.ast.handler_var_ids[&handler.id];
+            let var_id = self.ast.handler_var_ids[&handler.id];
             effect.default = Some(var_id);
         }
 
-        self.ctx
+        self.core
             .handlers
             .insert(handler.id, RefCell::new(handler).into());
         self.register_defs(defs);
@@ -61,16 +63,20 @@ impl<'ast> Visitor<'ast, (), Diagnostic> for LowerImplVisitor<'_, 'ast> {
     }
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let inst = inst.lower(&mut self.ctx)?;
-        self.ctx.insts.insert(inst.id, RefCell::new(inst).into());
+        let inst = inst.lower_ast_core(self.ast, self.core)?;
+        self.core.insts.insert(inst.id, RefCell::new(inst).into());
         Ok(())
     }
 }
 
-pub fn lower_impls<'v, 'ast>(ctx: &'v mut Context<'ast>, module: &'v mut Module) -> PassResult {
-    let mut visitor = LowerImplVisitor::new(ctx);
+pub fn lower_impls<'a>(
+    ast: &'a mut ast::Context,
+    core: &'a mut core::Context,
+    module: &'a mut Module,
+) -> PassResult {
+    let mut visitor = LowerImplVisitor::new(ast, core);
     match module.visit(&mut visitor) {
-        Ok(()) => PassResult::Ok(vec![]),
+        Ok(()) => PassResult::Ok(()),
         Err(err) => PassResult::Err(vec![err]),
     }
 }

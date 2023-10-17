@@ -2,30 +2,29 @@
 #![feature(trait_alias)]
 #![feature(let_chains)]
 #![feature(box_patterns)]
-pub mod ast_lower;
 mod collect;
-mod context;
 mod lower_decl;
 mod lower_expr;
 mod lower_impl;
 mod resolve;
-mod tycheck;
+mod solve_deps;
 
 use term_ast as ast;
+use term_ast_lower as lower;
 use term_core as core;
 use term_diag as diag;
 
+use ast::visit::Visit;
 use ast::{Module, Span};
 use diag::{Diagnostic, IntoDiagnostic, Report};
 use ustr::Ustr;
 
 pub use collect::*;
-pub use context::*;
 pub use lower_decl::*;
 pub use lower_expr::*;
 pub use lower_impl::*;
 pub use resolve::*;
-pub use tycheck::*;
+pub use solve_deps::*;
 
 /// A duplicate declaration error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,56 +71,53 @@ impl IntoDiagnostic for UnresolvedNameErr {
 }
 
 /// A function that performs an AST pass.
-pub trait PassFn = for<'v, 'ast> FnMut(&'v mut Context<'ast>, &'v mut ast::Module) -> PassResult;
+pub trait PassFn<RetT> =
+    for<'a> FnMut(&'a mut ast::Context, &'a mut core::Context, &'a mut Module) -> PassResult<RetT>;
 
-pub enum PassResult {
-    Ok(Vec<Diagnostic>),
+pub enum PassResult<T = ()> {
+    Ok(T),
     Err(Vec<Diagnostic>),
 }
 
-/// Applies the pass function to the given module.
-pub fn apply<'a>(
-    ctx: &'a mut Context,
-    module: &'a mut Module,
-    mut f: impl PassFn,
-) -> Result<(), Vec<Diagnostic>> {
-    match f(ctx, module) {
-        PassResult::Ok(ds) => {
-            if !ds.is_empty() {
-                Report::from(ds).print_stderr(&ctx.sources).unwrap();
-            }
-            Ok(())
+impl<T> PassResult<T> {
+    pub fn into_result(self) -> Result<T, Report> {
+        match self {
+            PassResult::Ok(r) => Ok(r),
+            PassResult::Err(ds) => Err(Report::from(ds)),
         }
-        PassResult::Err(ds) => Err(ds),
     }
 }
 
-/// A pass composed of multiple passes.
-///
-/// The passes are applied in order until one of them returns an error.
-pub fn composite(mut passes: Vec<Box<dyn PassFn>>) -> Box<dyn PassFn> {
+pub fn combine<T, U>(
+    mut a: impl PassFn<T> + 'static,
+    mut b: impl PassFn<U> + 'static,
+) -> Box<dyn PassFn<U>> {
     use PassResult::*;
-    let closure: Box<dyn PassFn> = Box::new(move |ctx, module| {
-        let mut results = vec![];
-        for pass in passes.iter_mut() {
-            match pass(ctx, module) {
-                Ok(ds) => {
-                    results.extend(ds);
-                }
-                Err(ds) => {
-                    results.extend(ds);
-                    return PassResult::Err(results);
-                }
-            }
+    let closure: Box<dyn PassFn<U>> = Box::new(move |ast, core, module| -> PassResult<U> {
+        match a(ast, core, module) {
+            Ok(_) => match b(ast, core, module) {
+                Ok(r) => Ok(r),
+                Err(ds) => Err(ds),
+            },
+            Err(ds) => Err(ds),
         }
-        PassResult::Ok(results)
     });
     closure
 }
 
 #[macro_export]
 macro_rules! compose {
-    ($($pass:expr),*) => {
-        $crate::composite(vec![$(Box::new($pass)),*])
+    ($pass:expr) => {
+        $pass
+    };
+    ($pass:expr, $($passes:expr),+) => {
+        $crate::combine($pass, $crate::compose!($($passes),+))
+    };
+}
+
+#[macro_export]
+macro_rules! apply {
+    ($ast:expr, $core:expr, $module:expr, $pass:expr) => {
+        $pass($ast, $core, $module).into_result()
     };
 }
