@@ -34,16 +34,22 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
     let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
     let ast = &mut ast::Context::new();
 
-    let mut pass1 = pass::compose![pass::collect, pass::resolve];
-    pass1(ast, core, module).into_result()?;
-
-    module.print_stdout(&ast);
-
+    pass::collect(ast, core, module).into_result()?;
+    let var_deps = pass::resolve(ast, core, module).into_result()?;
     pass::lower_all(ast, core, module).into_result()?;
+    // module.print_stdout(&ast);
+    core.print_stdout(&());
 
-    let deps = pass::solve_deps(ast, core, module).into_result()?;
-    for (id, deps) in deps {
-        println!("{} -> {:?}", id.pretty_string(core), deps);
+    println!("Dependencies:");
+    for (id, deps) in var_deps {
+        println!(
+            "  {} -> {}",
+            id.pretty_string(core),
+            deps.iter()
+                .map(|id| id.pretty_string(core))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
     // for item in module.items {

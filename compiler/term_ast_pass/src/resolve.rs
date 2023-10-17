@@ -9,15 +9,23 @@ use ast::*;
 use core::{Id, ParentId, PolyVarId, VarId};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, DerefMut};
 use ustr::{Ustr, UstrMap};
+
+enum Vis {
+    Local,
+    Global,
+}
 
 struct ResolveVisitor<'ctx> {
     ast: &'ctx mut ast::Context,
     core: &'ctx mut core::Context,
 
+    graph: BTreeMap<VarId, BTreeSet<VarId>>,
     scopes: Vec<Scope>,
     scope_id: Option<Id>,
+    current_var: Option<VarId>,
 }
 
 impl<'ctx> ResolveVisitor<'ctx> {
@@ -26,8 +34,10 @@ impl<'ctx> ResolveVisitor<'ctx> {
             ast,
             core,
 
+            graph: BTreeMap::default(),
             scopes: vec![Scope::default()],
             scope_id: None,
+            current_var: None,
         }
     }
 
@@ -125,11 +135,11 @@ impl<'ctx> ResolveVisitor<'ctx> {
         }
     }
 
-    pub fn resolve_var(&self, name: &Ident) -> diag::Result<Option<VarId>> {
+    pub fn resolve_var(&self, name: &Ident) -> diag::Result<Option<(VarId, Vis)>> {
         // first try resolving in local vars
         for scope in self.scopes.iter().rev() {
             if let Some(id) = scope.vars.get(&name.raw) {
-                return Ok(Some(*id));
+                return Ok(Some((*id, Vis::Local)));
             }
         }
 
@@ -138,10 +148,10 @@ impl<'ctx> ResolveVisitor<'ctx> {
             match *id {
                 Id::DataCon(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ast.con_var_ids.get(&id).unwrap()))
+                    Ok(Some((*self.ast.con_var_ids.get(&id).unwrap(), Vis::Global)))
                 }
                 Id::Decl(id) => match self.ast.decl_var_ids.get(&id) {
-                    Some(var_id) => Ok(Some(*var_id)),
+                    Some(var_id) => Ok(Some((*var_id, Vis::Global))),
                     None => {
                         // the name is declared but not defined
                         Diagnostic::error("name is declared but is not defined", name.span())
@@ -151,9 +161,12 @@ impl<'ctx> ResolveVisitor<'ctx> {
                 },
                 Id::Handler(id) => {
                     // map data_con to its var_id first
-                    Ok(Some(*self.ast.handler_var_ids.get(&id).unwrap()))
+                    Ok(Some((
+                        *self.ast.handler_var_ids.get(&id).unwrap(),
+                        Vis::Global,
+                    )))
                 }
-                Id::Var(id) => Ok(id.into()),
+                Id::Var(id) => Ok(Some((id, Vis::Global))),
                 id => Diagnostic::error("expected variable", self.core.id_as_span(id).unwrap())
                     .with_inline_note("name is defined but is not a variable")
                     .into_err(),
@@ -216,6 +229,20 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         op.params.visit(self)?;
         op.expr.visit(self)
     }
+
+    fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
+        if self.scopes.len() > 1 {
+            return Ok(());
+        }
+
+        self.current_var = Some(func.name.id.unwrap().var_id());
+        func.walk(self)?;
+        self.current_var = None;
+        Ok(())
+    }
+
+    //
+    //
 
     fn visit_class_ident(&mut self, ident: &mut Ident) -> diag::Result<()> {
         if ident.id.is_some() {
@@ -300,7 +327,11 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             return Ok(());
         }
 
-        if let Some(id) = self.resolve_var(ident)? {
+        if let Some((id, vis)) = self.resolve_var(ident)? {
+            if let Some(parent_id) = self.current_var {
+                self.graph.entry(parent_id).or_default().insert(id);
+            }
+
             ident.id = Some(id.into());
             Ok(())
         } else if self.ast.ambiguous_names.contains(&ident.raw) {
@@ -329,7 +360,7 @@ pub fn resolve<'a>(
     ast: &'a mut ast::Context,
     core: &'a mut core::Context,
     module: &'a mut Module,
-) -> PassResult {
+) -> PassResult<BTreeMap<VarId, BTreeSet<VarId>>> {
     let mut results = vec![];
     let mut resolver = ResolveVisitor::new(ast, core);
     for item in &mut module.items {
@@ -339,7 +370,7 @@ pub fn resolve<'a>(
     }
 
     if results.is_empty() {
-        PassResult::Ok(())
+        PassResult::Ok(resolver.graph)
     } else {
         PassResult::Err(results)
     }

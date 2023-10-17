@@ -5,7 +5,6 @@
 mod collect;
 mod lower;
 mod resolve;
-mod solve_deps;
 
 use term_ast as ast;
 use term_ast_lower as ast_lower;
@@ -20,7 +19,6 @@ use ustr::Ustr;
 pub use collect::*;
 pub use lower::*;
 pub use resolve::*;
-pub use solve_deps::*;
 
 /// A duplicate declaration error.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -108,12 +106,5 @@ macro_rules! compose {
     };
     ($pass:expr, $($passes:expr),+) => {
         $crate::combine($pass, $crate::compose!($($passes),+))
-    };
-}
-
-#[macro_export]
-macro_rules! apply {
-    ($ast:expr, $core:expr, $module:expr, $pass:expr) => {
-        $pass($ast, $core, $module).into_result()
     };
 }
