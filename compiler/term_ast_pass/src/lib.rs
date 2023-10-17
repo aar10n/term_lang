@@ -3,14 +3,12 @@
 #![feature(let_chains)]
 #![feature(box_patterns)]
 mod collect;
-mod lower_decl;
-mod lower_expr;
-mod lower_impl;
+mod lower;
 mod resolve;
 mod solve_deps;
 
 use term_ast as ast;
-use term_ast_lower as lower;
+use term_ast_lower as ast_lower;
 use term_core as core;
 use term_diag as diag;
 
@@ -20,9 +18,7 @@ use diag::{Diagnostic, IntoDiagnostic, Report};
 use ustr::Ustr;
 
 pub use collect::*;
-pub use lower_decl::*;
-pub use lower_expr::*;
-pub use lower_impl::*;
+pub use lower::*;
 pub use resolve::*;
 pub use solve_deps::*;
 

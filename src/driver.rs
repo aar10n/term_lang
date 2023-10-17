@@ -39,8 +39,7 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     module.print_stdout(&ast);
 
-    let mut pass2 = pass::compose![pass::lower_decls, pass::lower_impls, pass::lower_exprs];
-    pass2(ast, core, module).into_result()?;
+    pass::lower_all(ast, core, module).into_result()?;
 
     let deps = pass::solve_deps(ast, core, module).into_result()?;
     for (id, deps) in deps {
