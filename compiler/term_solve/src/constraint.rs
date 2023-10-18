@@ -1,4 +1,4 @@
-use crate::{debug_println, ef, ty, Context};
+use crate::{debug_println, ef, hm, ty, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -13,11 +13,11 @@ pub fn update(ctx: &mut Context, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
-        Eq(box t1, box t2) => Eq(crate::update(ctx, t1).into(), crate::update(ctx, t2).into()),
+        Eq(box t1, box t2) => Eq(hm::update(ctx, t1).into(), hm::update(ctx, t2).into()),
         Class(id, ts) => Class(
             id,
             ts.into_iter()
-                .map(|t| crate::update(ctx, t))
+                .map(|t| hm::update(ctx, t))
                 .collect::<Vec<_>>(),
         ),
     }
@@ -32,13 +32,13 @@ pub fn instantiate(
     match c {
         Empty => Empty,
         Eq(box t1, box t2) => Eq(
-            crate::instantiate(ctx, t1, ps).into(),
-            crate::instantiate(ctx, t2, ps).into(),
+            hm::instantiate(ctx, t1, ps).into(),
+            hm::instantiate(ctx, t2, ps).into(),
         ),
         Class(id, ts) => Class(
             id,
             ts.into_iter()
-                .map(|t| crate::instantiate(ctx, t, ps))
+                .map(|t| hm::instantiate(ctx, t, ps))
                 .collect(),
         ),
     }
@@ -53,14 +53,12 @@ pub fn generalize(
     match c {
         Empty => Empty,
         Eq(box t1, box t2) => Eq(
-            crate::generalize(ctx, t1, ps).into(),
-            crate::generalize(ctx, t2, ps).into(),
+            hm::generalize(ctx, t1, ps).into(),
+            hm::generalize(ctx, t2, ps).into(),
         ),
         Class(id, ts) => Class(
             id,
-            ts.into_iter()
-                .map(|t| crate::generalize(ctx, t, ps))
-                .collect(),
+            ts.into_iter().map(|t| hm::generalize(ctx, t, ps)).collect(),
         ),
     }
 }
@@ -70,13 +68,13 @@ pub fn cannonicalize(ctx: &mut Context, c: Constraint) -> Constraint {
     match c {
         Empty => Empty,
         Eq(box t1, box t2) => Eq(
-            crate::cannonicalize(ctx, t1).into(),
-            crate::cannonicalize(ctx, t2).into(),
+            hm::cannonicalize(ctx, t1).into(),
+            hm::cannonicalize(ctx, t2).into(),
         ),
         Class(id, ts) => Class(
             id,
             ts.into_iter()
-                .map(|t| crate::cannonicalize(ctx, t))
+                .map(|t| hm::cannonicalize(ctx, t))
                 .collect::<Vec<_>>(),
         ),
     }
@@ -86,14 +84,8 @@ pub fn subst_ty(r: &Ty, x: &Ty, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
-        Eq(box t1, box t2) => Eq(
-            crate::subst_ty(r, x, t1).into(),
-            crate::subst_ty(r, x, t2).into(),
-        ),
-        Class(id, ts) => Class(
-            id,
-            ts.into_iter().map(|t| crate::subst_ty(r, x, t)).collect(),
-        ),
+        Eq(box t1, box t2) => Eq(hm::subst_ty(r, x, t1).into(), hm::subst_ty(r, x, t2).into()),
+        Class(id, ts) => Class(id, ts.into_iter().map(|t| hm::subst_ty(r, x, t)).collect()),
     }
 }
 
@@ -101,14 +93,8 @@ pub fn subst_ef(r: &Ef, x: &Ef, c: Constraint) -> Constraint {
     use Constraint::*;
     match c {
         Empty => Empty,
-        Eq(box t1, box t2) => Eq(
-            crate::subst_ef(r, x, t1).into(),
-            crate::subst_ef(r, x, t2).into(),
-        ),
-        Class(id, ts) => Class(
-            id,
-            ts.into_iter().map(|t| crate::subst_ef(r, x, t)).collect(),
-        ),
+        Eq(box t1, box t2) => Eq(hm::subst_ef(r, x, t1).into(), hm::subst_ef(r, x, t2).into()),
+        Class(id, ts) => Class(id, ts.into_iter().map(|t| hm::subst_ef(r, x, t)).collect()),
     }
 }
 

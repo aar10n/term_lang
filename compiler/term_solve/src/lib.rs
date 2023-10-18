@@ -23,15 +23,6 @@ use type_env::TypeEnv;
 
 use std::collections::{BTreeSet, HashMap};
 
-macro_rules! debug_println {
-    ($ctx:ident, $($arg:tt)*) => {
-        if $ctx.trace {
-            println!($($arg)*);
-        }
-    };
-}
-pub(crate) use debug_println;
-
 pub struct Context<'ctx> {
     pub core: &'ctx mut core::Context,
     pub solve: &'ctx mut context::TyContext,
@@ -39,7 +30,15 @@ pub struct Context<'ctx> {
 }
 
 impl<'ctx> Context<'ctx> {
-    fn new(core: &'ctx mut core::Context, solve: &'ctx mut context::TyContext) -> Self {
+    pub fn new(
+        core: &'ctx mut core::Context,
+        solve: &'ctx mut context::TyContext,
+        trace: bool,
+    ) -> Self {
+        Self { core, solve, trace }
+    }
+
+    fn new_normal(core: &'ctx mut core::Context, solve: &'ctx mut context::TyContext) -> Self {
         Self {
             core,
             solve,
@@ -70,11 +69,10 @@ impl<'ctx> Context<'ctx> {
 
 impl<'ctx> From<(&'ctx mut core::Context, &'ctx mut context::TyContext)> for Context<'ctx> {
     fn from((core, solve): (&'ctx mut core::Context, &'ctx mut context::TyContext)) -> Self {
-        Self::new(core, solve)
+        Self::new_normal(core, solve)
     }
 }
 
-//
 //
 //
 
@@ -85,7 +83,7 @@ pub fn solve(
     e: Expr,
     t: &TyE,
 ) -> diag::Result<(Expr, TyE)> {
-    let mut ctx = Context::new(core, solve);
+    let mut ctx = Context::new_normal(core, solve);
     let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
@@ -94,8 +92,8 @@ pub fn solve(
             e
         }),
     }?;
-    let u = update(&mut ctx, e_t);
-    let u = unify(&mut ctx, t.clone(), u, 0)?;
+    let u = hm::update(&mut ctx, e_t);
+    let u = hm::unify(&mut ctx, t.clone(), u, 0)?;
     Ok((e, u))
 }
 
@@ -109,137 +107,15 @@ pub fn infer<'ctx>(ctx: &mut Context<'ctx>, e: Expr) -> diag::Result<(Expr, TyE)
             e
         }),
     }?;
-    let t = generalize(ctx, e_t, &mut Default::default());
+    let t = hm::generalize(ctx, e_t, &mut Default::default());
     Ok((e, t))
 }
 
-/// Checks that a set of type parameters are valid.
-///
-/// This function validates that all non-empty constraints reference at least one
-/// bound type parameter.
-pub fn check_valid_type_params(
-    ctx: &mut core::Context,
-    params: &[PolyVarId],
-    constraints: &[Constraint],
-) -> diag::Result<()> {
-    let ps = BTreeSet::from_iter(params.iter().map(|x| *x));
-    for c in constraints {
-        match c {
-            Constraint::Empty => {}
-            Constraint::Eq(box t1, box t2) => todo!(),
-            Constraint::Class(id, ts) => todo!(),
+macro_rules! debug_println {
+    ($ctx:ident, $($arg:tt)*) => {
+        if $ctx.trace {
+            println!($($arg)*);
         }
-    }
-    Ok(())
+    };
 }
-
-pub fn solve_constraints(
-    ctx: &mut Context<'_>,
-    mut cs: Vec<Constraint>,
-) -> diag::Result<Vec<Constraint>> {
-    let mut open = vec![];
-    while let Some(c) = cs.pop() {
-        match c {
-            Constraint::Empty => {}
-            Constraint::Eq(box t1, box t2) => {
-                let t = unify(ctx, t1.clone(), t2.clone(), 0)?;
-                if !t.is_concrete() {
-                    open.push(Constraint::Eq(t1.into(), t2.into()));
-                }
-            }
-            Constraint::Class(id, ts) => {
-                // check that `ts` satisfies the class
-                todo!()
-            }
-        }
-    }
-    Ok(open)
-}
-
-pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Result<TyE> {
-    let t1 = cannonicalize(ctx, t1);
-    let t2 = cannonicalize(ctx, t2);
-    if t1 == t2 {
-        return Ok(t1);
-    }
-
-    let tab = "  ".repeat(level);
-    debug_println!(
-        ctx,
-        "{tab}unify: {} = {}",
-        t1.pretty_string(ctx.core),
-        t2.pretty_string(ctx.core)
-    );
-
-    let (t1, f1, mut cs) = t1.into_tuple();
-    let (t2, f2, cs2) = t2.into_tuple();
-    cs.extend(cs2);
-
-    let t = ty::unify(ctx, t1, t2, level + 1)?;
-    let f = ef::unify(ctx, f1, f2, level + 1)?;
-    let cs = solve_constraints(ctx, cs)?;
-
-    let ty = TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs));
-    Ok(ty)
-}
-
-pub fn update(ctx: &mut Context<'_>, t: TyE) -> TyE {
-    let (t, f, cs) = t.into_tuple();
-    TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs))
-}
-
-pub fn instantiate(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<PolyVarId, MonoVarId>) -> TyE {
-    let (t, f, mut cs) = t.into_tuple();
-    let (t, f1, cs1) = ty::instantiate(ctx, t, ps).into_tuple();
-    let f = ef::instantiate(ctx, f, ps) | f1;
-    cs.extend(cs1);
-    let cs = cs::instantiate(ctx, cs, ps);
-    TyE::new(t, f, cs)
-}
-
-pub fn generalize(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<MonoVarId, PolyVarId>) -> TyE {
-    let (t, f, mut cs) = t.into_tuple();
-    let (t, f1, cs1) = ty::generalize(ctx, t, ps).into_tuple();
-    let f = ef::generalize(ctx, f, ps) | f1;
-    cs.extend(cs1);
-    let cs = cs::generalize(ctx, cs, ps);
-    TyE::new(t, f, cs)
-}
-
-pub fn cannonicalize(ctx: &mut Context<'_>, t: TyE) -> TyE {
-    let (t, f, mut cs) = t.into_tuple();
-    let (t, f2, cs2) = ty::cannonicalize(ctx, t).into_tuple();
-    cs.extend(cs2);
-
-    let f = ef::cannonicalize(ctx, f | f2);
-    let cs = cs::cannonicalize(ctx, cs);
-    TyE::new(t, f, cs)
-}
-
-pub fn ty_occurs(x: &Ty, t: &TyE) -> bool {
-    ty::ty_occurs(x, &t.ty) || ef::ty_occurs(x, &t.ef)
-}
-
-pub fn ef_occurs(x: &Ef, t: &TyE) -> bool {
-    ty::ef_occurs(x, &t.ty) || ef::ef_occurs(x, &t.ef)
-}
-
-pub fn subst_ty(r: &Ty, x: &Ty, t: TyE) -> TyE {
-    TyE::new(
-        ty::subst_ty(r, x, t.ty),
-        ef::subst_ty(r, x, t.ef),
-        t.cs.into_iter()
-            .map(|c| constraint::subst_ty(r, x, c))
-            .collect(),
-    )
-}
-
-pub fn subst_ef(r: &Ef, x: &Ef, t: TyE) -> TyE {
-    TyE::new(
-        ty::subst_ef(r, x, t.ty),
-        ef::subst_ef(r, x, t.ef),
-        t.cs.into_iter()
-            .map(|c| constraint::subst_ef(r, x, c))
-            .collect(),
-    )
-}
+pub(crate) use debug_println;

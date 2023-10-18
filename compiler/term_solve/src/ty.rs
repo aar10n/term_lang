@@ -1,4 +1,4 @@
-use crate::{debug_println, ef, Context};
+use crate::{debug_println, ef, hm, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -54,7 +54,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
             result
         }
         (Rec(id1, box t1), Rec(id2, box t2)) if id1 == id2 => {
-            let t = crate::unify(ctx, t1, t2, level + 1)?;
+            let t = hm::unify(ctx, t1, t2, level + 1)?;
             Rec(id1, t.into())
         }
         (Data(id1, ts1), Data(id2, ts2)) if id1 == id2 => {
@@ -70,13 +70,13 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
             let ts = ts1
                 .into_iter()
                 .zip(ts2.into_iter())
-                .map(|(t1, t2)| crate::unify(ctx, t1, t2, level + 1))
+                .map(|(t1, t2)| hm::unify(ctx, t1, t2, level + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Data(id1, ts)
         }
         (Func(box t1, box t2), Func(box t3, box t4)) => {
-            let t1 = crate::unify(ctx, t1, t3, level + 1)?;
-            let t2 = crate::unify(ctx, t2, t4, level + 1)?;
+            let t1 = hm::unify(ctx, t1, t3, level + 1)?;
+            let t2 = hm::unify(ctx, t2, t4, level + 1)?;
             Func(t1.into(), t2.into())
         }
         (Record(fds1), Record(fds2)) => {
@@ -85,7 +85,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
                 let t2 = fds2.get(&name).ok_or_else(|| {
                     format!("field `{}` not found in record type", name).into_diagnostic()
                 })?;
-                let t = crate::unify(ctx, t1, t2.clone(), level + 1)?;
+                let t = hm::unify(ctx, t1, t2.clone(), level + 1)?;
                 fields.insert(name, t);
             }
             Record(fields)
@@ -123,13 +123,13 @@ pub fn update(ctx: &mut Context<'_>, t: Ty) -> Ty {
     use Ty::*;
     match t {
         Mono(x) => ctx.solve.ty_set.find(Mono(x)),
-        Rec(id, box t) => Rec(id, crate::update(ctx, t).into()),
-        Data(id, ts) => Data(id, ts.into_iter().map(|t| crate::update(ctx, t)).collect()),
-        Func(box t1, box t2) => Func(crate::update(ctx, t1).into(), crate::update(ctx, t2).into()),
+        Rec(id, box t) => Rec(id, hm::update(ctx, t).into()),
+        Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::update(ctx, t)).collect()),
+        Func(box t1, box t2) => Func(hm::update(ctx, t1).into(), hm::update(ctx, t2).into()),
         Record(fields) => Record(
             fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::update(ctx, v)))
+                .map(|(k, v)| (k, hm::update(ctx, v)))
                 .collect(),
         ),
         Effectful(box t, f) => Effectful(update(ctx, t).into(), f),
@@ -152,25 +152,25 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
             }
         },
         Rec(id, box t) => {
-            let t = crate::instantiate(ctx, t, ps);
+            let t = hm::instantiate(ctx, t, ps);
             TyE::pure(Rec(id, t.into()))
         }
         Data(id, ts) => {
             let ts = ts
                 .into_iter()
-                .map(|t| crate::instantiate(ctx, t, ps))
+                .map(|t| hm::instantiate(ctx, t, ps))
                 .collect();
             TyE::pure(Data(id, ts))
         }
         Func(box t1, box t2) => {
-            let t1 = crate::instantiate(ctx, t1, ps);
-            let t2 = crate::instantiate(ctx, t2, ps);
+            let t1 = hm::instantiate(ctx, t1, ps);
+            let t2 = hm::instantiate(ctx, t2, ps);
             TyE::pure(Func(t1.into(), t2.into()))
         }
         Record(fields) => {
             let fields = fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::instantiate(ctx, v, ps)))
+                .map(|(k, v)| (k, hm::instantiate(ctx, v, ps)))
                 .collect();
             TyE::pure(Record(fields))
         }
@@ -196,25 +196,22 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
             }
         },
         Rec(id, box t) => {
-            let t = crate::generalize(ctx, t, ps);
+            let t = hm::generalize(ctx, t, ps);
             TyE::pure(Rec(id, t.into()))
         }
         Data(id, ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::generalize(ctx, t, ps))
-                .collect();
+            let ts = ts.into_iter().map(|t| hm::generalize(ctx, t, ps)).collect();
             TyE::pure(Data(id, ts))
         }
         Func(box t1, box t2) => {
-            let t1 = crate::generalize(ctx, t1, ps);
-            let t2 = crate::generalize(ctx, t2, ps);
+            let t1 = hm::generalize(ctx, t1, ps);
+            let t2 = hm::generalize(ctx, t2, ps);
             TyE::pure(Func(t1.into(), t2.into()))
         }
         Record(fields) => {
             let fields = fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::generalize(ctx, v, ps)))
+                .map(|(k, v)| (k, hm::generalize(ctx, v, ps)))
                 .collect();
             TyE::pure(Record(fields))
         }
@@ -231,14 +228,14 @@ pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
     use Ty::*;
     match t {
         Rec(id, box t) => {
-            let t = crate::cannonicalize(ctx, t);
+            let t = hm::cannonicalize(ctx, t);
             TyE::pure(Rec(id, t.into()))
         }
         Data(id, ts) => {
             let (ts, f, cs) =
                 ts.into_iter()
                     .fold((vec![], Ef::Infer, vec![]), |(mut ts, f, mut cs), t| {
-                        let (t, f1, cs1) = crate::cannonicalize(ctx, t).into_tuple();
+                        let (t, f1, cs1) = hm::cannonicalize(ctx, t).into_tuple();
                         ts.push(TyE::pure(t));
                         cs.extend(cs1);
                         (ts, f | f1, cs)
@@ -246,8 +243,8 @@ pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
             TyE::new(Data(id, ts), f, cs)
         }
         Func(box t1, box t2) => {
-            let (t1, f1, mut cs) = crate::cannonicalize(ctx, t1).into_tuple();
-            let (t2, f2, cs2) = crate::cannonicalize(ctx, t2).into_tuple();
+            let (t1, f1, mut cs) = hm::cannonicalize(ctx, t1).into_tuple();
+            let (t2, f2, cs2) = hm::cannonicalize(ctx, t2).into_tuple();
             cs.extend(cs2);
             TyE::new(
                 Ty::Func(TyE::pure(t1).into(), TyE::pure(t2).into()).into(),
@@ -258,7 +255,7 @@ pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
         Record(fields) => {
             let fields = fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::cannonicalize(ctx, v)))
+                .map(|(k, v)| (k, hm::cannonicalize(ctx, v)))
                 .collect();
             TyE::pure(Record(fields))
         }
@@ -278,10 +275,10 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 
     use Ty::*;
     match t {
-        Rec(_, box t) => crate::ty_occurs(x, t),
-        Data(_, ts) => ts.iter().any(|t| crate::ty_occurs(x, t)),
-        Func(box t1, box t2) => crate::ty_occurs(x, &t1) || crate::ty_occurs(x, &t2),
-        Record(fields) => fields.values().any(|v| crate::ty_occurs(x, &v)),
+        Rec(_, box t) => hm::ty_occurs(x, t),
+        Data(_, ts) => ts.iter().any(|t| hm::ty_occurs(x, t)),
+        Func(box t1, box t2) => hm::ty_occurs(x, &t1) || hm::ty_occurs(x, &t2),
+        Record(fields) => fields.values().any(|v| hm::ty_occurs(x, &v)),
         Effectful(box t, f) => ty_occurs(x, t) || ef::ty_occurs(x, f),
         _ => false,
     }
@@ -290,10 +287,10 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 pub fn ef_occurs(x: &Ef, t: &Ty) -> bool {
     use Ty::*;
     match t {
-        Rec(_, box t) => crate::ef_occurs(x, t),
-        Data(_, ts) => ts.iter().any(|t| crate::ef_occurs(x, t)),
-        Func(box t1, box t2) => crate::ef_occurs(x, &t1) || crate::ef_occurs(x, &t2),
-        Record(fields) => fields.values().any(|v| crate::ef_occurs(x, &v)),
+        Rec(_, box t) => hm::ef_occurs(x, t),
+        Data(_, ts) => ts.iter().any(|t| hm::ef_occurs(x, t)),
+        Func(box t1, box t2) => hm::ef_occurs(x, &t1) || hm::ef_occurs(x, &t2),
+        Record(fields) => fields.values().any(|v| hm::ef_occurs(x, &v)),
         Effectful(box t, f) => ef::ef_occurs(x, f),
         _ => false,
     }
@@ -306,19 +303,13 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
 
     use Ty::*;
     match t {
-        Rec(id, box t) => Rec(id, crate::subst_ty(r, x, t).into()),
-        Data(id, ts) => Data(
-            id,
-            ts.into_iter().map(|t| crate::subst_ty(r, x, t)).collect(),
-        ),
-        Func(box t1, box t2) => Func(
-            crate::subst_ty(r, x, t1).into(),
-            crate::subst_ty(r, x, t2).into(),
-        ),
+        Rec(id, box t) => Rec(id, hm::subst_ty(r, x, t).into()),
+        Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::subst_ty(r, x, t)).collect()),
+        Func(box t1, box t2) => Func(hm::subst_ty(r, x, t1).into(), hm::subst_ty(r, x, t2).into()),
         Record(fields) => Record(
             fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::subst_ty(r, x, v)))
+                .map(|(k, v)| (k, hm::subst_ty(r, x, v)))
                 .collect(),
         ),
         Effectful(box t, f) => Effectful(subst_ty(r, x, t).into(), ef::subst_ty(r, x, f)),
@@ -329,18 +320,12 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
 pub fn subst_ef(r: &Ef, x: &Ef, t: Ty) -> Ty {
     use Ty::*;
     match t {
-        Data(id, ts) => Data(
-            id,
-            ts.into_iter().map(|t| crate::subst_ef(r, x, t)).collect(),
-        ),
-        Func(box t1, box t2) => Func(
-            crate::subst_ef(r, x, t1).into(),
-            crate::subst_ef(r, x, t2).into(),
-        ),
+        Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::subst_ef(r, x, t)).collect()),
+        Func(box t1, box t2) => Func(hm::subst_ef(r, x, t1).into(), hm::subst_ef(r, x, t2).into()),
         Record(fields) => Record(
             fields
                 .into_iter()
-                .map(|(k, v)| (k, crate::subst_ef(r, x, v)))
+                .map(|(k, v)| (k, hm::subst_ef(r, x, v)))
                 .collect(),
         ),
         Effectful(box t, f) => Effectful(t.into(), ef::subst_ef(r, x, f)),

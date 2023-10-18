@@ -54,15 +54,6 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
             );
             deps.add_dependency(*dep_id, *id);
         }
-        // println!(
-        //     "  {} -> {}",
-        //     id.pretty_string(core),
-        //     dep_on
-        //         .iter()
-        //         .map(|id| id.pretty_string(core))
-        //         .collect::<Vec<_>>()
-        //         .join(", ")
-        // );
     }
 
     println!("Order:");

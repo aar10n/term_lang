@@ -1,4 +1,4 @@
-use crate::{debug_println, Context};
+use crate::{debug_println, hm, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -49,7 +49,7 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
             let ts = ts1
                 .into_iter()
                 .zip(ts2.into_iter())
-                .map(|(t1, t2)| crate::unify(ctx, t1, t2, level + 1))
+                .map(|(t1, t2)| hm::unify(ctx, t1, t2, level + 1))
                 .collect::<Result<Vec<_>, _>>()?;
             Effect(id1, ts)
         }
@@ -94,7 +94,7 @@ pub fn update(ctx: &mut Context<'_>, f: Ef) -> Ef {
     match f {
         Mono(x) => ctx.solve.ef_set.find(Mono(x)),
         Effect(id, ts) => {
-            let ts = ts.into_iter().map(|t| crate::update(ctx, t)).collect();
+            let ts = ts.into_iter().map(|t| hm::update(ctx, t)).collect();
             Effect(id, ts)
         }
         Union(fs) => Union(fs.into_iter().map(|f| update(ctx, f)).collect()),
@@ -119,7 +119,7 @@ pub fn instantiate(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<PolyVarId, Mon
         Effect(id, ts) => {
             let ts = ts
                 .into_iter()
-                .map(|t| crate::instantiate(ctx, t, ps))
+                .map(|t| hm::instantiate(ctx, t, ps))
                 .collect();
             Effect(id, ts)
         }
@@ -144,10 +144,7 @@ pub fn generalize(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<MonoVarId, Poly
         //     }
         // },
         Effect(id, ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::generalize(ctx, t, ps))
-                .collect();
+            let ts = ts.into_iter().map(|t| hm::generalize(ctx, t, ps)).collect();
             Effect(id, ts)
         }
         Union(fs) => Union(fs.into_iter().map(|f| generalize(ctx, f, ps)).collect()),
@@ -160,10 +157,7 @@ pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
     match f {
         Infer => Pure,
         Effect(id, ts) => {
-            let ts = ts
-                .into_iter()
-                .map(|t| crate::cannonicalize(ctx, t))
-                .collect();
+            let ts = ts.into_iter().map(|t| hm::cannonicalize(ctx, t)).collect();
             Effect(id, ts)
         }
         Union(mut fs) => {
@@ -208,7 +202,7 @@ pub fn contains(id: EffectId, ts: &Vec<TyE>, f: &Ef) -> bool {
 pub fn ty_occurs(x: &Ty, f: &Ef) -> bool {
     use Ef::*;
     match f {
-        Effect(_, ts) => ts.iter().any(|t| crate::ty_occurs(x, t)),
+        Effect(_, ts) => ts.iter().any(|t| hm::ty_occurs(x, t)),
         Union(ts) => ts.iter().any(|t| ty_occurs(x, t)),
         _ => false,
     }
@@ -221,7 +215,7 @@ pub fn ef_occurs(x: &Ef, f: &Ef) -> bool {
 
     use Ef::*;
     match f {
-        Effect(_, ts) => ts.iter().any(|t| crate::ef_occurs(x, t)),
+        Effect(_, ts) => ts.iter().any(|t| hm::ef_occurs(x, t)),
         Union(ts) => ts.iter().any(|t| ef_occurs(x, t)),
         _ => false,
     }
@@ -230,10 +224,7 @@ pub fn ef_occurs(x: &Ef, f: &Ef) -> bool {
 pub fn subst_ty(r: &Ty, x: &Ty, f: Ef) -> Ef {
     use Ef::*;
     match f {
-        Effect(id, ts) => Effect(
-            id,
-            ts.into_iter().map(|t| crate::subst_ty(r, x, t)).collect(),
-        ),
+        Effect(id, ts) => Effect(id, ts.into_iter().map(|t| hm::subst_ty(r, x, t)).collect()),
         Union(ts) => Union(ts.into_iter().map(|t| subst_ty(r, x, t)).collect()),
         f => f,
     }
@@ -246,10 +237,7 @@ pub fn subst_ef(r: &Ef, x: &Ef, f: Ef) -> Ef {
 
     use Ef::*;
     match f {
-        Effect(id, ts) => Effect(
-            id,
-            ts.into_iter().map(|t| crate::subst_ef(r, x, t)).collect(),
-        ),
+        Effect(id, ts) => Effect(id, ts.into_iter().map(|t| hm::subst_ef(r, x, t)).collect()),
         Union(ts) => Union(ts.into_iter().map(|t| subst_ef(r, x, t)).collect()),
         f => f,
     }

@@ -1,8 +1,9 @@
-use crate::{debug_println, ty, type_env, Context};
+use crate::{constraint, debug_println, ef, ty, type_env, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
+use constraint::cs;
 use core::*;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
@@ -31,11 +32,11 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         Var(id) => {
             debug_println!(ctx, "{tab}[var] solving: {}", id.pretty_string(ctx.core));
             let (e, t) = if let Some(t) = ctx.solve.typings.get(&Expr::Var(id)).cloned() {
-                let t = crate::update(ctx, t);
-                (Expr::Var(id), crate::cannonicalize(ctx, t))
+                let t = update(ctx, t);
+                (Expr::Var(id), cannonicalize(ctx, t))
             } else if let Some(d) = ctx.core.defs.get(&id).cloned() {
                 let d = d.borrow();
-                let t = crate::instantiate(ctx, d.ty.clone(), &mut HashMap::new());
+                let t = instantiate(ctx, d.ty.clone(), &mut HashMap::new());
                 ctx.solve.typings.insert(Expr::Var(id), t.clone());
                 (d.body.clone(), t)
             } else {
@@ -72,7 +73,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let (e, e_t) = algorithmj(ctx, e, level + 1)?;
-            let e_t = crate::unify(ctx, t, e_t, level + 1)?;
+            let e_t = unify(ctx, t, e_t, level + 1)?;
             debug_println!(ctx, "{tab}[var] done: {}", e_t.pretty_string(ctx.core));
             (Var(id), e_t)
         }
@@ -108,14 +109,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let (t2, f2) = t2.split_ef();
 
             let v = ctx.new_ty_var();
-            crate::unify(
+            unify(
                 ctx,
                 t1.clone(),
                 TyE::pure_func(t2.clone(), TyE::pure(v.clone())),
                 level + 1,
             )?;
 
-            let result = crate::update(ctx, TyE::pure(v).with_ef(f1 | f2));
+            let result = update(ctx, TyE::pure(v).with_ef(f1 | f2));
             debug_println!(ctx, "{tab}[app] done: {}", result.pretty_string(ctx.core));
             (Apply(e1.into(), e2.into()), result)
         }
@@ -140,7 +141,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 ret_cs,
             );
 
-            let result = crate::update(ctx, result);
+            let result = update(ctx, result);
             debug_println!(ctx, "{tab}[lam] done: {}", result.pretty_string(ctx.core),);
             (Lambda(p.into(), e.into()), result)
         }
@@ -160,7 +161,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
             ctx.solve.typings.pop();
 
-            let e_t = crate::unify(ctx, ft, e_t, level + 1)?;
+            let e_t = unify(ctx, ft, e_t, level + 1)?;
             let (e1, res_t) = if let Some(box e1) = e1 {
                 debug_println!(
                     ctx,
@@ -222,7 +223,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let mut res_f = Ef::Infer;
             for (p, e) in alts.into_iter().map(|a| (a.pat, a.expr)) {
                 let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
-                crate::unify(ctx, e_t.clone(), TyE::pure(t), level + 1)?;
+                unify(ctx, e_t.clone(), TyE::pure(t), level + 1)?;
 
                 ctx.solve.typings.push(vars);
                 let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
@@ -235,7 +236,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let result = TyE::new(res_t, res_f, vec![]);
-            let result = crate::update(ctx, result);
+            let result = update(ctx, result);
             debug_println!(ctx, "{tab}[case] done: {}", result.pretty_string(ctx.core));
             (Case(e.into(), new_alts), result)
         }
@@ -273,7 +274,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 }
 
                 let ht = solve_handler_ty(ctx, &f)?;
-                let e_t = crate::unify(ctx, e_t, ht, level + 1)?;
+                let e_t = unify(ctx, e_t, ht, level + 1)?;
 
                 debug_println!(
                     ctx,
@@ -292,7 +293,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let result = TyE::new(e_t, Ef::from(fs), e_cs);
-            let result = crate::update(ctx, result);
+            let result = update(ctx, result);
             debug_println!(ctx, "{tab}[han] done: {} ", result.pretty_string(ctx.core));
             (Handle(e.into(), Some(new_alts)), result)
         }
@@ -326,7 +327,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let result = TyE::new(e_t, Ef::from(fs), e_cs);
-            let result = crate::update(ctx, result);
+            let result = update(ctx, result);
             debug_println!(ctx, "{tab}[han] done: {} ", result.pretty_string(ctx.core));
             (Handle(e.into(), Some(new_alts)), result)
         }
@@ -351,7 +352,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 result = t;
             }
 
-            let result = crate::update(ctx, result.with_ef(res_f));
+            let result = update(ctx, result.with_ef(res_f));
             debug_println!(ctx, "{tab}[do ] done: {}", result.pretty_string(ctx.core));
             (Do(new_es), result)
         }
@@ -394,7 +395,7 @@ pub fn solve_collect_bindings(
                 // id is a data constructor. get the type
                 let def = ctx.core.defs.get(id).cloned().unwrap();
                 let def = def.borrow();
-                let t = crate::instantiate(ctx, def.ty.clone(), &mut HashMap::default());
+                let t = instantiate(ctx, def.ty.clone(), &mut HashMap::default());
                 (t.ty, vec![])
             } else {
                 solve_collect_bindings(ctx, e1, level + 1)?
@@ -402,7 +403,7 @@ pub fn solve_collect_bindings(
             let (t2, vs2) = solve_collect_bindings(ctx, e2, level + 1)?;
 
             let v = ctx.new_ty_var();
-            crate::unify(
+            unify(
                 ctx,
                 TyE::pure(t1),
                 TyE::pure_func(TyE::pure(t2), TyE::pure(v.clone())),
@@ -423,7 +424,7 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
         Effect(ef_id, ts) => {
             let effect = ctx.core.effects.get(ef_id).cloned().unwrap();
             let effect = effect.borrow();
-            let mut t = crate::instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
+            let mut t = instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
             t
         }
         Union(fs) => {
@@ -433,4 +434,118 @@ pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
         }
         _ => return format!("expected effect, found `{}`", f.pretty_string(ctx.core)).into_err(),
     })
+}
+
+//
+//
+
+pub fn solve_constraints(
+    ctx: &mut Context<'_>,
+    mut cs: Vec<Constraint>,
+) -> diag::Result<Vec<Constraint>> {
+    let mut open = vec![];
+    while let Some(c) = cs.pop() {
+        match c {
+            Constraint::Empty => {}
+            Constraint::Eq(box t1, box t2) => {
+                let t = unify(ctx, t1.clone(), t2.clone(), 0)?;
+                if !t.is_concrete() {
+                    open.push(Constraint::Eq(t1.into(), t2.into()));
+                }
+            }
+            Constraint::Class(id, ts) => {
+                // check that `ts` satisfies the class
+                todo!()
+            }
+        }
+    }
+    Ok(open)
+}
+
+pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Result<TyE> {
+    let t1 = cannonicalize(ctx, t1);
+    let t2 = cannonicalize(ctx, t2);
+    if t1 == t2 {
+        return Ok(t1);
+    }
+
+    let tab = "  ".repeat(level);
+    debug_println!(
+        ctx,
+        "{tab}unify: {} = {}",
+        t1.pretty_string(ctx.core),
+        t2.pretty_string(ctx.core)
+    );
+
+    let (t1, f1, mut cs) = t1.into_tuple();
+    let (t2, f2, cs2) = t2.into_tuple();
+    cs.extend(cs2);
+
+    let t = ty::unify(ctx, t1, t2, level + 1)?;
+    let f = ef::unify(ctx, f1, f2, level + 1)?;
+    let cs = solve_constraints(ctx, cs)?;
+
+    let ty = TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs));
+    Ok(ty)
+}
+
+pub fn update(ctx: &mut Context<'_>, t: TyE) -> TyE {
+    let (t, f, cs) = t.into_tuple();
+    TyE::new(ty::update(ctx, t), ef::update(ctx, f), cs::update(ctx, cs))
+}
+
+pub fn instantiate(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<PolyVarId, MonoVarId>) -> TyE {
+    let (t, f, mut cs) = t.into_tuple();
+    let (t, f1, cs1) = ty::instantiate(ctx, t, ps).into_tuple();
+    let f = ef::instantiate(ctx, f, ps) | f1;
+    cs.extend(cs1);
+    let cs = cs::instantiate(ctx, cs, ps);
+    TyE::new(t, f, cs)
+}
+
+pub fn generalize(ctx: &mut Context<'_>, t: TyE, ps: &mut HashMap<MonoVarId, PolyVarId>) -> TyE {
+    let (t, f, mut cs) = t.into_tuple();
+    let (t, f1, cs1) = ty::generalize(ctx, t, ps).into_tuple();
+    let f = ef::generalize(ctx, f, ps) | f1;
+    cs.extend(cs1);
+    let cs = cs::generalize(ctx, cs, ps);
+    TyE::new(t, f, cs)
+}
+
+pub fn cannonicalize(ctx: &mut Context<'_>, t: TyE) -> TyE {
+    let (t, f, mut cs) = t.into_tuple();
+    let (t, f2, cs2) = ty::cannonicalize(ctx, t).into_tuple();
+    cs.extend(cs2);
+
+    let f = ef::cannonicalize(ctx, f | f2);
+    let cs = cs::cannonicalize(ctx, cs);
+    TyE::new(t, f, cs)
+}
+
+pub fn ty_occurs(x: &Ty, t: &TyE) -> bool {
+    ty::ty_occurs(x, &t.ty) || ef::ty_occurs(x, &t.ef)
+}
+
+pub fn ef_occurs(x: &Ef, t: &TyE) -> bool {
+    ty::ef_occurs(x, &t.ty) || ef::ef_occurs(x, &t.ef)
+}
+
+pub fn subst_ty(r: &Ty, x: &Ty, t: TyE) -> TyE {
+    TyE::new(
+        ty::subst_ty(r, x, t.ty),
+        ef::subst_ty(r, x, t.ef),
+        t.cs.into_iter()
+            .map(|c| constraint::subst_ty(r, x, c))
+            .collect(),
+    )
+}
+
+pub fn subst_ef(r: &Ef, x: &Ef, t: TyE) -> TyE {
+    TyE::new(
+        ty::subst_ef(r, x, t.ty),
+        ef::subst_ef(r, x, t.ef),
+        t.cs.into_iter()
+            .map(|c| constraint::subst_ef(r, x, c))
+            .collect(),
+    )
 }
