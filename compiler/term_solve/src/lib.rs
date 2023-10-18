@@ -6,6 +6,7 @@ mod context;
 pub mod ef;
 pub mod hm;
 pub mod print;
+pub mod topo_sort;
 pub mod ty;
 pub mod type_env;
 pub mod union_find;

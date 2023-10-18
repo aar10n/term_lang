@@ -1,4 +1,5 @@
 #![allow(warnings)]
+#![feature(let_chains)]
 mod command;
 mod driver;
 mod repl;

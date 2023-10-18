@@ -22,6 +22,6 @@ term_solve = { path = "compiler/term_solve" }
 
 atty = "0.2.4"
 clap = { version = "4.3.12", features = ["derive"] }
-rustyline = { version = "12.0.0", features = ["derive"] }
 peg = "0.8.1"
+rustyline = { version = "12.0.0", features = ["derive"] }
 ustr = "0.10.0"
