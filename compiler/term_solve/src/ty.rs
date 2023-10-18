@@ -16,9 +16,10 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
 
     let tab = TABWIDTH.repeat(level);
     debug_println!(
+        ctx,
         "{tab}unify_ty: {} = {}",
-        t1.pretty_string(ctx),
-        t2.pretty_string(ctx)
+        t1.pretty_string(ctx.core),
+        t2.pretty_string(ctx.core)
     );
 
     use Ty::*;

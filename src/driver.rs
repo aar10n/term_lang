@@ -43,7 +43,7 @@ pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(
 
     let solve = &mut solve::TyContext::new();
 
-    // println!("Dependencies:");
+    println!("Dependencies:");
     let mut deps = TopologicalSort::<VarId>::new();
     for (id, dep_on) in &core.dep_graph {
         for dep_id in dep_on {

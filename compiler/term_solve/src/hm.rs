@@ -29,7 +29,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
         }
         Sym(s) => todo!(),
         Var(id) => {
-            debug_println!("{tab}[var] solving: {}", id.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[var] solving: {}", id.pretty_string(ctx.core));
             let (e, t) = if let Some(t) = ctx.solve.typings.get(&Expr::Var(id)).cloned() {
                 let t = crate::update(ctx, t);
                 (Expr::Var(id), crate::cannonicalize(ctx, t))
@@ -63,25 +63,31 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             if e == Var(id) || t.is_concrete() {
                 debug_println!(
+                    ctx,
                     "{tab}[var] done: {} : {}",
-                    id.pretty_string(ctx),
-                    t.pretty_string(ctx)
+                    id.pretty_string(ctx.core),
+                    t.pretty_string(ctx.core)
                 );
                 return Ok((Var(id), t));
             }
 
             let (e, e_t) = algorithmj(ctx, e, level + 1)?;
             let e_t = crate::unify(ctx, t, e_t, level + 1)?;
-            debug_println!("{tab}[var] done: {}", e_t.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[var] done: {}", e_t.pretty_string(ctx.core));
             (Var(id), e_t)
         }
         Record(fields) => {
             let mut es = BTreeMap::new();
             let mut rec = BTreeMap::new();
             for (n, e) in fields {
-                debug_println!("{tab}[rec] solving: {} = {}", n, e.pretty_string(ctx));
+                debug_println!(
+                    ctx,
+                    "{tab}[rec] solving: {} = {}",
+                    n,
+                    e.pretty_string(ctx.core)
+                );
                 let (e, t) = algorithmj(ctx, e.clone(), level + 1)?;
-                debug_println!("{tab}[rec] done: {}", t.pretty_string(ctx));
+                debug_println!(ctx, "{tab}[rec] done: {}", t.pretty_string(ctx.core));
                 es.insert(n.clone(), e);
                 rec.insert(n, t);
             }
@@ -90,9 +96,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
         Apply(box e1, box e2) => {
             debug_println!(
+                ctx,
                 "{tab}[app] solving: ({} {})",
-                e1.pretty_string(ctx),
-                e2.pretty_string(ctx)
+                e1.pretty_string(ctx.core),
+                e2.pretty_string(ctx.core)
             );
 
             let (e1, t1) = algorithmj(ctx, e1, level + 1)?;
@@ -109,14 +116,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             )?;
 
             let result = crate::update(ctx, TyE::pure(v).with_ef(f1 | f2));
-            debug_println!("{tab}[app] done: {}", result.pretty_string(ctx),);
+            debug_println!(ctx, "{tab}[app] done: {}", result.pretty_string(ctx.core));
             (Apply(e1.into(), e2.into()), result)
         }
         Lambda(box p, box e) => {
             debug_println!(
+                ctx,
                 "{tab}[lam] solving: λ{}.{}",
-                p.pretty_string(ctx),
-                p.pretty_string(ctx)
+                p.pretty_string(ctx.core),
+                p.pretty_string(ctx.core)
             );
 
             let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
@@ -133,14 +141,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             );
 
             let result = crate::update(ctx, result);
-            debug_println!("{tab}[lam] done: {}", result.pretty_string(ctx),);
+            debug_println!(ctx, "{tab}[lam] done: {}", result.pretty_string(ctx.core),);
             (Lambda(p.into(), e.into()), result)
         }
         Let(Rec(x, box e), e1) => {
             debug_println!(
+                ctx,
                 "{tab}[letr] solving: let rec {} = {}",
                 x,
-                e.pretty_string(ctx)
+                e.pretty_string(ctx.core)
             );
             let v1 = TyE::pure(ctx.new_ty_var());
             let v2 = TyE::pure(ctx.new_ty_var());
@@ -153,7 +162,11 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             let e_t = crate::unify(ctx, ft, e_t, level + 1)?;
             let (e1, res_t) = if let Some(box e1) = e1 {
-                debug_println!("{tab}{TABWIDTH}[letr] solving in {}", e1.pretty_string(ctx));
+                debug_println!(
+                    ctx,
+                    "{tab}{TABWIDTH}[letr] solving in {}",
+                    e1.pretty_string(ctx.core)
+                );
                 ctx.solve.typings.push(vec![(Expr::Var(x), e_t)]);
                 let (e1, e1_t) = algorithmj(ctx, e1.clone(), level + 1)?;
                 ctx.solve.typings.pop();
@@ -162,14 +175,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 (None, e_t)
             };
 
-            debug_println!("{tab}[letr] done: {}", res_t.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[letr] done: {}", res_t.pretty_string(ctx.core));
             (Let(Rec(x, e.into()), e1), res_t)
         }
         Let(NonRec(box p, box e), e1) => {
             debug_println!(
+                ctx,
                 "{tab}[let] solving: let {} = {}",
-                p.pretty_string(ctx),
-                e.pretty_string(ctx)
+                p.pretty_string(ctx.core),
+                e.pretty_string(ctx.core)
             );
 
             let (t, vars) = solve_collect_bindings(ctx, &p, level + 1)?;
@@ -188,15 +202,16 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 (None, e_t)
             };
 
-            debug_println!("{tab}[let] done: {}", res_t.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[let] done: {}", res_t.pretty_string(ctx.core));
             (Let(NonRec(p.into(), e.into()), e1), res_t)
         }
         Case(box e, alts) => {
             debug_println!(
+                ctx,
                 "{tab}[case] solving: case {} in {}",
-                e.pretty_string(ctx),
+                e.pretty_string(ctx.core),
                 alts.iter()
-                    .map(|a| a.pretty_string(ctx))
+                    .map(|a| a.pretty_string(ctx.core))
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
@@ -221,15 +236,20 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             let result = TyE::new(res_t, res_f, vec![]);
             let result = crate::update(ctx, result);
-            debug_println!("{tab}[case] done: {}", result.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[case] done: {}", result.pretty_string(ctx.core));
             (Case(e.into(), new_alts), result)
         }
         Handle(box e, Some(alts)) => {
             debug_println!(
+                ctx,
                 "{tab}[han] solving: handle {} with \n\t{}",
-                e.pretty_string(ctx),
+                e.pretty_string(ctx.core),
                 alts.iter()
-                    .map(|(ea)| format!("{} ~> {}", ea.pretty_string(ctx), e.pretty_string(ctx)))
+                    .map(|(ea)| format!(
+                        "{} ~> {}",
+                        ea.pretty_string(ctx.core),
+                        e.pretty_string(ctx.core)
+                    ))
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
@@ -241,9 +261,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let mut fs = e_f.into_set();
             for (f, e) in alts.into_iter().map(|a| (a.ef, a.expr)) {
                 debug_println!(
+                    ctx,
                     "{tab}[han] solving: {} ~> {}",
-                    f.pretty_string(ctx),
-                    e.pretty_string(ctx),
+                    f.pretty_string(ctx.core),
+                    e.pretty_string(ctx.core),
                 );
 
                 let (e, e_t) = algorithmj(ctx, e, level + 1)?;
@@ -255,9 +276,10 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 let e_t = crate::unify(ctx, e_t, ht, level + 1)?;
 
                 debug_println!(
+                    ctx,
                     "{tab}[han] done: {} ~> {}",
-                    f.pretty_string(ctx),
-                    e_t.pretty_string(ctx),
+                    f.pretty_string(ctx.core),
+                    e_t.pretty_string(ctx.core),
                 );
 
                 // remove handled effects from the set
@@ -271,13 +293,14 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             let result = TyE::new(e_t, Ef::from(fs), e_cs);
             let result = crate::update(ctx, result);
-            debug_println!("{tab}[han] done: {} ", result.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[han] done: {} ", result.pretty_string(ctx.core));
             (Handle(e.into(), Some(new_alts)), result)
         }
         Handle(box e, None) => {
             debug_println!(
+                ctx,
                 "{tab}[han] solving: handle default {}",
-                e.pretty_string(ctx)
+                e.pretty_string(ctx.core)
             );
 
             let (e, e_t) = algorithmj(ctx, e.clone(), level + 1)?;
@@ -304,14 +327,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             let result = TyE::new(e_t, Ef::from(fs), e_cs);
             let result = crate::update(ctx, result);
-            debug_println!("{tab}[han] done: {} ", result.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[han] done: {} ", result.pretty_string(ctx.core));
             (Handle(e.into(), Some(new_alts)), result)
         }
         Do(es) => {
             debug_println!(
+                ctx,
                 "{tab}[do ] solving: {}",
                 es.iter()
-                    .map(|e| e.pretty_string(ctx))
+                    .map(|e| e.pretty_string(ctx.core))
                     .collect::<Vec<_>>()
                     .join("\n\t")
             );
@@ -328,7 +352,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let result = crate::update(ctx, result.with_ef(res_f));
-            debug_println!("{tab}[do ] done: {}", result.pretty_string(ctx));
+            debug_println!(ctx, "{tab}[do ] done: {}", result.pretty_string(ctx.core));
             (Do(new_es), result)
         }
 

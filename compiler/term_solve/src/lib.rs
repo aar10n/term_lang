@@ -24,8 +24,10 @@ use type_env::TypeEnv;
 use std::collections::{BTreeSet, HashMap};
 
 macro_rules! debug_println {
-    ($($arg:tt)*) => {
-        // println!($($arg)*);
+    ($ctx:ident, $($arg:tt)*) => {
+        if $ctx.trace {
+            println!($($arg)*);
+        }
     };
 }
 pub(crate) use debug_println;
@@ -33,11 +35,24 @@ pub(crate) use debug_println;
 pub struct Context<'ctx> {
     pub core: &'ctx mut core::Context,
     pub solve: &'ctx mut context::TyContext,
+    pub trace: bool,
 }
 
 impl<'ctx> Context<'ctx> {
     fn new(core: &'ctx mut core::Context, solve: &'ctx mut context::TyContext) -> Self {
-        Self { core, solve }
+        Self {
+            core,
+            solve,
+            trace: false,
+        }
+    }
+
+    fn new_tracing(core: &'ctx mut core::Context, solve: &'ctx mut context::TyContext) -> Self {
+        Self {
+            core,
+            solve,
+            trace: true,
+        }
     }
 
     fn new_ty_var(&mut self) -> Ty {
@@ -150,9 +165,10 @@ pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Res
 
     let tab = "  ".repeat(level);
     debug_println!(
+        ctx,
         "{tab}unify: {} = {}",
-        t1.pretty_string(ctx),
-        t2.pretty_string(ctx)
+        t1.pretty_string(ctx.core),
+        t2.pretty_string(ctx.core)
     );
 
     let (t1, f1, mut cs) = t1.into_tuple();

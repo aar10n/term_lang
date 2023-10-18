@@ -16,9 +16,10 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
 
     let tab = TABWIDTH.repeat(level);
     debug_println!(
+        ctx,
         "{tab}unify_ef: {} = {}",
-        f1.pretty_string(ctx),
-        f2.pretty_string(ctx)
+        f1.pretty_string(ctx.core),
+        f2.pretty_string(ctx.core)
     );
 
     use Ef::*;
