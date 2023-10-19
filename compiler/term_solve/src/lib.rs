@@ -1,5 +1,6 @@
 #![feature(box_patterns)]
 #![feature(trait_alias)]
+#![feature(let_chains)]
 #![allow(unused)]
 pub mod constraint;
 mod context;
@@ -14,14 +15,15 @@ pub mod union_find;
 pub use context::*;
 use term_core as core;
 use term_diag as diag;
-use term_print::PrettyString;
+use term_print::{PrettyPrint, PrettyString};
 
 use constraint::cs;
 use core::{Constraint, Ef, Expr, MonoVarId, PolyVarId, Ty, TyE, VarId};
 use diag::{Diagnostic, IntoDiagnostic};
+use topo_sort::TopologicalSort;
 use type_env::TypeEnv;
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 pub struct Context<'ctx> {
     pub core: &'ctx mut core::Context,
@@ -76,8 +78,27 @@ impl<'ctx> From<(&'ctx mut core::Context, &'ctx mut context::TyContext)> for Con
 //
 //
 
-/// Solves a type equation.
-pub fn solve(
+/// Infers the most general type of an expression.
+pub fn infer(
+    core: &mut core::Context,
+    solve: &mut context::TyContext,
+    e: Expr,
+) -> diag::Result<(Expr, TyE)> {
+    let mut ctx = Context::new_normal(core, solve);
+    let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
+        Ok(u) => Ok(u),
+        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
+            e.with_span(s)
+        } else {
+            e
+        }),
+    }?;
+    let t = hm::generalize(&mut ctx, e_t, &mut Default::default());
+    Ok((e, t))
+}
+
+/// Satisfy a type equation.
+pub fn satisfy(
     core: &mut core::Context,
     solve: &mut context::TyContext,
     e: Expr,
@@ -97,18 +118,20 @@ pub fn solve(
     Ok((e, u))
 }
 
-/// Infers the most general type of an expression.
-pub fn infer<'ctx>(ctx: &mut Context<'ctx>, e: Expr) -> diag::Result<(Expr, TyE)> {
-    let (e, e_t) = match hm::algorithmj(ctx, e, 0) {
-        Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
-            e.with_span(s)
-        } else {
-            e
-        }),
-    }?;
-    let t = hm::generalize(ctx, e_t, &mut Default::default());
-    Ok((e, t))
+pub fn sort_dependencies(ctx: &core::Context) -> Vec<VarId> {
+    let mut topo = TopologicalSort::<VarId>::new();
+    for (id, depends_on) in &ctx.dep_graph {
+        for dep_id in depends_on {
+            topo.add_dependency(dep_id.clone(), id.clone());
+        }
+    }
+
+    let mut out = vec![];
+    while let mut deps = topo.pop() && !deps.is_empty() {
+        deps.sort();
+        out.extend(deps);
+    }
+    out
 }
 
 macro_rules! debug_println {

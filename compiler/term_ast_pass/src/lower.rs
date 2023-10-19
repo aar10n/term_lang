@@ -79,7 +79,11 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
-        println!("lowering var decl: {}", var.pretty_string(self.ast));
+        println!(
+            "lowering var decl: {} : {}",
+            var.name.pretty_string(self.ast),
+            var.ty.pretty_string(self.ast)
+        );
         if let Some(def) = var.lower_ast_core(self.ast, self.core)? {
             self.register_def(def);
         }

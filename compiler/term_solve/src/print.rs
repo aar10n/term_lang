@@ -71,9 +71,9 @@ where
         for (prec, dep) in &self.top {
             writeln!(
                 out,
-                "{} (#prec {}) -> {}",
-                prec.pretty_string(ctx),
+                "({}) {} | {}",
                 dep.num_prec,
+                prec.pretty_string(ctx),
                 dep.succ
                     .iter()
                     .map(|id| id.pretty_string(ctx))

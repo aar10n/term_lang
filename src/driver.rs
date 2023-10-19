@@ -30,42 +30,36 @@ pub fn new_context() -> Context {
     ctx
 }
 
-pub fn evaluate(core: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
-    let file = core.sources.get(source_id).unwrap();
+pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
+    let actx = &mut ast::Context::new();
+    let tctx = &mut solve::TyContext::new();
+
+    let file = ctx.sources.get(source_id).unwrap();
     let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
 
-    let ast = &mut ast::Context::new();
-    pass::collect(ast, core, module).into_result()?;
-    pass::resolve(ast, core, module).into_result()?;
-    pass::lower_all(ast, core, module).into_result()?;
+    pass::collect(actx, ctx, module).into_result()?;
+    pass::resolve(actx, ctx, module).into_result()?;
+    pass::lower_all(actx, ctx, module).into_result()?;
     // module.print_stdout(&ast);
-    // core.print_stdout(&());
+    // ctx.print_stdout(&());
 
-    let solve = &mut solve::TyContext::new();
+    let order = solve::sort_dependencies(&ctx);
+    for id in order {
+        let body = {
+            let def = ctx.defs[&id].clone();
+            let def = def.borrow();
+            def.body.clone()
+        };
 
-    println!("Dependencies:");
-    let mut deps = TopologicalSort::<VarId>::new();
-    for (id, dep_on) in &core.dep_graph {
-        for dep_id in dep_on {
-            println!(
-                "  {} depends on {}",
-                id.pretty_string(core),
-                dep_id.pretty_string(core)
-            );
-            deps.add_dependency(*dep_id, *id);
-        }
+        println!("inferring type of {}", id.pretty_string(ctx));
+        let (body, ty) = solve::infer(ctx, tctx, body)?;
+        println!("  {}", ty.pretty_string(ctx));
+
+        let def = ctx.defs[&id].clone();
+        let mut def = def.borrow_mut();
+        def.body = body;
+        def.ty = ty;
     }
-
-    println!("Order:");
-    while let mut ids = deps.pop() && !ids.is_empty() {
-        ids.sort();
-
-        for id in ids {
-            println!("-> {}", id.pretty_string(core));
-        }
-    }
-
-    // let entry = core.global_names[&ustr::ustr("main")].var_id();
 
     println!("{GREEN}Done{RESET}");
     Ok(())

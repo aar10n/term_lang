@@ -30,7 +30,6 @@ default handler stdio for IO
     ;
 
 
-# println : String -> () ~ IO
 println s = 
     handle 
         case s
@@ -40,6 +39,10 @@ println s =
     | Except'IOError ~> panic_exception
     ;
 
-
 # the effect operator `~` binds default handers to effects in the applied expression
-main () = ~println "hi"
+purefn () = do
+    | ~println "hi"
+    | 0
+    ;
+
+main () = purefn()

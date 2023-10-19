@@ -42,13 +42,17 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
         self.top.is_empty()
     }
 
-    pub fn add_dependency(&mut self, prec: impl Into<T>, succ: impl Into<T>) {
-        let prec = prec.into();
-        let succ = succ.into();
+    pub fn add_dependency(&mut self, dependent: impl Into<T>, dependee: impl Into<T>) {
+        let prec = dependent.into();
+        let succ = dependee.into();
+        let recursive = prec == succ;
+
         match self.top.entry(prec) {
             Entry::Vacant(e) => {
                 let mut dep = Dependency::new();
-                dep.succ.insert(succ.clone());
+                if !recursive {
+                    dep.succ.insert(succ.clone());
+                }
                 e.insert(dep);
             }
             Entry::Occupied(e) => {
@@ -59,9 +63,14 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
             }
         }
 
+        if recursive {
+            return;
+        }
+
         match self.top.entry(succ) {
             Entry::Vacant(e) => {
                 let mut dep = Dependency::new();
+                dep.num_prec = 1;
                 e.insert(dep);
             }
             Entry::Occupied(e) => {

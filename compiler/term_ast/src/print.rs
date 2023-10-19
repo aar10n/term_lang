@@ -493,16 +493,16 @@ impl PrettyPrint<Context> for VarDecl {
             self.name.pretty_string(ctx),
             self.ty.pretty_string(ctx)
         );
-        if let Some(decl_id) = self.name.id.and_then(|id| id.as_decl()) {
-            if let Some(var_id) = ctx.decl_var_ids.get(&decl_id) {
-                writeln!(
-                    out,
-                    "{tab}{TABWIDTH}{ATTR}var_id:{RESET} {}<{}>",
-                    var_id.pretty_string(&mut term_core::Context::new()),
-                    var_id.raw
-                )?;
-            }
-        }
+        // if let Some(decl_id) = self.name.id.and_then(|id| id.as_decl()) {
+        //     if let Some(var_id) = ctx.decl_var_ids.get(&decl_id) {
+        //         writeln!(
+        //             out,
+        //             "{tab}{TABWIDTH}{ATTR}var_id:{RESET} {}<{}>",
+        //             var_id.pretty_string(&mut term_core::Context::new()),
+        //             var_id.raw
+        //         )?;
+        //     }
+        // }
 
         Ok(())
     }

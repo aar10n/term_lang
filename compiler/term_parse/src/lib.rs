@@ -11,7 +11,6 @@ pub struct SyntaxError {
 
 impl IntoDiagnostic for SyntaxError {
     fn into_diagnostic(self) -> Diagnostic {
-        println!("{:?}", self.span);
         Diagnostic::new(Level::Error, "syntax error".to_owned(), self.span)
             .with_inline_note(format!("expected {}", self.expected))
     }
