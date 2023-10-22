@@ -14,10 +14,10 @@ term_ast_pass = { path = "compiler/term_ast_pass" }
 term_ast_lower = { path = "compiler/term_ast_lower" }
 term_common = { path = "compiler/term_common" }
 term_core = { path = "compiler/term_core" }
+term_cps = { path = "compiler/term_cps" }
 term_diag = { path = "compiler/term_diag" }
 term_parse = { path = "compiler/term_parse" }
 term_print = { path = "compiler/term_print" }
-term_rewrite = { path = "compiler/term_rewrite" }
 term_solve = { path = "compiler/term_solve" }
 
 atty = "0.2.4"

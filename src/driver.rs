@@ -3,10 +3,10 @@ use term_ast_lower as lower;
 use term_ast_pass as pass;
 use term_common as common;
 use term_core as core;
+use term_cps as cps;
 use term_diag as diag;
 use term_parse as parse;
 use term_print as print;
-use term_rewrite as rewrite;
 use term_solve as solve;
 
 use ast::ItemKind;
@@ -62,12 +62,11 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         println!("====== normal form ======");
         println!("{}", body.pretty_string(ctx));
         println!("{:?}", body);
-        let csp_body = rewrite::csp::transform(ctx, body);
-        println!("====== csp form ======");
-        println!("{}", csp_body.pretty_string(ctx));
+        let cps_body = cps::transform(ctx, body);
+        println!("====== cps form ======");
+        println!("{}", cps_body.pretty_string(ctx));
         println!("======================");
     }
-    // rewrite::csp::transform(ctx, expr);
 
     // ctx.print_stdout(&());
 
