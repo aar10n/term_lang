@@ -113,9 +113,9 @@ impl Context {
         id: T,
         name: Ustr,
         span: Span,
-    ) -> Result<(), Id> {
+    ) -> Result<(), (Span, Id)> {
         if let Some(existing_id) = self.global_names.get(&name) {
-            return Err(*existing_id);
+            return Err((span, *existing_id));
         }
 
         self.id_names.insert(id.into(), (name, span));
@@ -128,9 +128,9 @@ impl Context {
         id: T,
         name: Ustr,
         span: Span,
-    ) -> Result<(), Id> {
+    ) -> Result<(), (Span, Id)> {
         if let Some(existing_id) = self.global_types.get(&name) {
-            return Err(*existing_id);
+            return Err((span, *existing_id));
         }
 
         self.id_names.insert(id.into(), (name, span));
@@ -145,19 +145,19 @@ impl Context {
         name: Ustr,
         span: Span,
         excl: Exclusivity,
-    ) -> Result<(), Id> {
+    ) -> Result<(), (Span, Id)> {
         let id = id.into();
         let parent_id = parent_id.into();
 
         match excl {
             Exclusivity::Name => {
                 if let Some(existing_id) = self.global_names.get(&name) {
-                    return Err(*existing_id);
+                    return Err((span, *existing_id));
                 }
             }
             Exclusivity::Type => {
                 if let Some(existing_id) = self.global_types.get(&name) {
-                    return Err(*existing_id);
+                    return Err((span, *existing_id));
                 }
             }
             Exclusivity::None => {}
@@ -168,7 +168,7 @@ impl Context {
             .get(&parent_id)
             .and_then(|ns| ns.names.get(&name))
         {
-            return Err(*existing_id);
+            return Err((span, *existing_id));
         }
 
         self.id_names.insert(id, (name, span));

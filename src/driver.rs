@@ -36,7 +36,6 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
 
     let file = ctx.sources.get(source_id).unwrap();
     let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
-
     pass::collect(actx, ctx, module).into_result()?;
     pass::resolve(actx, ctx, module).into_result()?;
     pass::lower_all(actx, ctx, module).into_result()?;
@@ -57,9 +56,20 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
 
         let def = ctx.defs[&id].clone();
         let mut def = def.borrow_mut();
-        def.body = body;
+        def.body = body.clone();
         def.ty = ty;
+
+        println!("====== normal form ======");
+        println!("{}", body.pretty_string(ctx));
+        println!("{:?}", body);
+        let csp_body = rewrite::csp::transform(ctx, body);
+        println!("====== csp form ======");
+        println!("{}", csp_body.pretty_string(ctx));
+        println!("======================");
     }
+    // rewrite::csp::transform(ctx, expr);
+
+    // ctx.print_stdout(&());
 
     println!("{GREEN}Done{RESET}");
     Ok(())

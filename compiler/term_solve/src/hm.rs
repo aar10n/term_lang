@@ -409,7 +409,6 @@ pub fn solve_collect_bindings(
                 TyE::pure_func(TyE::pure(t2), TyE::pure(v.clone())),
                 level,
             )?;
-            // println!("t: {} | v: {}", t.pretty_string(ctx), v.pretty_string(ctx));
             let t = ty::update(ctx, v);
             Ok((t, vs1.into_iter().chain(vs2).collect()))
         }

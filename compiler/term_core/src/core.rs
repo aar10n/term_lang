@@ -291,6 +291,14 @@ impl Expr {
         Self::Lit(Lit::Unit)
     }
 
+    pub fn apply(a: Expr, b: Expr) -> Self {
+        Self::Apply(a.into(), b.into())
+    }
+
+    pub fn lambda(p: Expr, b: Expr) -> Self {
+        Self::Lambda(p.into(), b.into())
+    }
+
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
     }
