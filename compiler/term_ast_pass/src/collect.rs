@@ -6,7 +6,7 @@ use term_diag as diag;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use core::{DeclId, Exclusivity};
+use core::{DeclId, Exclusivity, Id};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use term_print::{PrettyPrint, PrettyString};
 
@@ -73,14 +73,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = data.name.raw;
         let span = data.name.span();
 
-        if let Err(existing_id) = self.core.register_global_type(id, name, span) {
-            return DuplicateDeclErr {
-                kind: "data",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_type(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "data")?;
 
         self.scope_id = Some(id.into());
         data.name.id = Some(id.into());
@@ -96,14 +91,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = con.name.raw;
         let span = con.name.span();
 
-        if let Err(existing_id) = self.core.register_global_name(id, name, span) {
-            return DuplicateDeclErr {
-                kind: "data constructor",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_name(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "data constructor")?;
 
         // register and associate variable id with this constructor. the variable
         // will become associated with a constructor function used in type checking.
@@ -120,14 +110,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = effect.name.raw;
         let span = effect.name.span();
 
-        if let Err(existing_id) = self.core.register_global_type(id, name, span) {
-            return DuplicateDeclErr {
-                kind: "effect",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_type(id, name, span)
+            .ok_or_duplicate_decl_err(self.core, "effect")?;
 
         self.scope_id = Some(id.into());
         effect.name.id = Some(id.into());
@@ -144,31 +129,18 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) =
-            self.core
-                .register_scoped_name(effect_id, op_id, name, span, Exclusivity::None)
-        {
-            return DuplicateDeclErr {
-                kind: "effect operation",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_scoped_name(effect_id, op_id, name, span, Exclusivity::None)
+            .ok_or_duplicate_decl_err(self.core, "effect operation")?;
 
         // register and associate variable id with this operation.
         let var_id = self.core.ids.next_var_id();
         self.core.register_id_name(var_id, name, span);
         self.ast.op_var_ids.insert(op_id, var_id);
 
-        if let Err(existing_id) = self.core.register_global_name(var_id, name, span) {
-            return DuplicateDeclErr {
-                kind: "effect operation",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_name(var_id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
 
         op.name.id = Some(op_id.into());
         op.ty.visit(self)
@@ -179,14 +151,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = handler.name.raw;
         let span = handler.name.span();
 
-        if let Err(existing_id) = self.core.register_global_name(id, name, span) {
-            return DuplicateDeclErr {
-                kind: "effect handler",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_name(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "effect handler")?;
 
         // register variable associated with handler
         let var_id = self.core.ids.next_var_id();
@@ -207,17 +174,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = op.name.raw;
         let span = op.name.span();
 
-        if let Err(existing_id) =
-            self.core
-                .register_scoped_name(handler_id, id, name, span, Exclusivity::None)
-        {
-            return DuplicateDeclErr {
-                kind: "effect operation",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_scoped_name(handler_id, id, name, span, Exclusivity::None)
+            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
 
         op.name.id = Some(id.into());
         op.params.visit(self)?;
@@ -229,14 +188,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = class.name.raw;
         let span = class.name.span();
 
-        if let Err(existing_id) = self.core.register_global_type(id, name, span) {
-            return DuplicateDeclErr {
-                kind: "class",
-                span,
-                first: self.core.id_as_span(existing_id).unwrap(),
-            }
-            .into_err();
-        };
+        self.core
+            .register_global_type(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "class")?;
 
         self.scope_id = Some(id.into());
         class.name.id = Some(id.into());
@@ -252,20 +206,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = method.name.raw;
         let span = method.name.span();
 
-        match self
-            .core
+        self.core
             .register_scoped_name(class_id, id, name, span, Exclusivity::Name)
-        {
-            Err(existing_id) => {
-                return DuplicateDeclErr {
-                    kind: "member",
-                    span,
-                    first: self.core.id_as_span(existing_id).unwrap(),
-                }
-                .into_err();
-            }
-            Ok(_) => {}
-        };
+            .ok_or_duplicate_decl_err(&self.core, "member")?;
 
         self.ast.ambiguous_names.insert(name);
         self.all_decls.insert(name, (id, method.span()));
@@ -295,20 +238,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let name = method.name.raw;
         let span = method.name.span();
 
-        match self
-            .core
+        self.core
             .register_scoped_name(inst_id, id, name, span, Exclusivity::None)
-        {
-            Err(existing_id) => {
-                return DuplicateDeclErr {
-                    kind: "member",
-                    span,
-                    first: self.core.id_as_span(existing_id).unwrap(),
-                }
-                .into_err();
-            }
-            Ok(_) => {}
-        };
+            .ok_or_duplicate_decl_err(&self.core, "member")?;
 
         method.name.id = Some(id.into());
         method.params.visit(self)?;
@@ -390,7 +322,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
             self.ast.var_decl_ids.insert(id, *decl_id);
         } else {
             // this is a global function, register it
-            self.core.register_global_name(id, name, span).unwrap();
+            self.core
+                .register_global_name(id, name, span)
+                .ok_or_duplicate_decl_err(&self.core, "function")?;
         }
 
         func.params.visit(self)?;
@@ -438,5 +372,33 @@ pub fn collect<'a>(
         PassResult::Ok(())
     } else {
         PassResult::Err(results)
+    }
+}
+
+trait OkOrDuplicateDeclErr {
+    type Ok;
+    fn ok_or_duplicate_decl_err(
+        self,
+        ctx: &core::Context,
+        kind: &'static str,
+    ) -> Result<Self::Ok, Diagnostic>;
+}
+
+impl<T> OkOrDuplicateDeclErr for Result<T, (Span, Id)> {
+    type Ok = T;
+    fn ok_or_duplicate_decl_err(
+        self,
+        ctx: &core::Context,
+        kind: &'static str,
+    ) -> Result<T, Diagnostic> {
+        match self {
+            Ok(x) => Ok(x),
+            Err((span, existing_id)) => DuplicateDeclErr {
+                kind,
+                span,
+                first: ctx.id_as_span(existing_id).unwrap(),
+            }
+            .into_err(),
+        }
     }
 }
