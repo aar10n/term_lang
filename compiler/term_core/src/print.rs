@@ -159,6 +159,43 @@ impl PrettyPrint<Context> for Expr {
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
             Expr::Sym(n) => write!(out, "{BLUE}{}{RESET}", n),
             Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
+
+            Expr::Apply(a, b) => {
+                write!(out, "{LPARN}")?;
+                a.pretty_print(out, ctx, 0)?;
+                write!(out, " ")?;
+                b.pretty_print(out, ctx, 0)?;
+                write!(out, "{RPARN}")?;
+                Ok(())
+            }
+            Expr::Lambda(p, t) => {
+                write!(out, "{LAMBDA}{}{PERIOD} ", p.pretty_string(ctx))?;
+                t.pretty_print(out, ctx, 0)
+            }
+            Expr::Case(e, bs) => {
+                write!(out, "{KEYWORD}case{RESET} ")?;
+                write_indented(out, ctx, e, 0, false)?;
+                writeln!(out, " {KEYWORD}of{RESET} ")?;
+                write_bulleted_sep(out, ctx, bs, level + 1, "|")
+            }
+            Expr::Handle(e, alts) => {
+                write!(out, "{KEYWORD}handle{RESET} ")?;
+                write_indented(out, ctx, e, 0, false)?;
+                writeln!(out, " {KEYWORD}with{RESET} ")?;
+                write_bulleted_sep(out, ctx, alts, level + 1, "|")
+            }
+            Expr::Do(es) => {
+                writeln!(out, "{KEYWORD}do{RESET}")?;
+                write_bulleted(out, ctx, es, level + 1)
+            }
+            Expr::Let(bs, e) => {
+                write_list(out, ctx, COMMA_SEP, bs)?;
+                if let Some(e) = e {
+                    writeln!(out, " {KEYWORD}in{RESET} ")?;
+                    write_indented(out, ctx, e, level + 1, true)?;
+                }
+                Ok(())
+            }
             Expr::Record(fs) => {
                 write!(out, "{LBRACE}")?;
                 let mut fs = fs.iter().peekable();
@@ -171,43 +208,8 @@ impl PrettyPrint<Context> for Expr {
                 }
                 write!(out, "{RBRACE}")
             }
-
-            Expr::Apply(a, b) => {
-                write!(out, "{LPARN}")?;
-                a.pretty_print(out, ctx, 0)?;
-                write!(out, " ")?;
-                b.pretty_print(out, ctx, 0)?;
-                write!(out, "{RPARN}")?;
-                Ok(())
-            }
-            Expr::Lambda(id, t) => {
-                write!(out, "{LAMBDA}{}{PERIOD}", id.pretty_string(ctx))?;
-                t.pretty_print(out, ctx, 0)
-            }
-            Expr::Let(b, e) => {
-                b.pretty_print(out, ctx, 0)?;
-                if let Some(e) = e {
-                    writeln!(out, " {KEYWORD}in{RESET} ")?;
-                    write_indented(out, ctx, e, level + 1, true)?;
-                }
-                Ok(())
-            }
-            Expr::Case(e, bs) => {
-                write!(out, "{KEYWORD}case{RESET} ")?;
-                write_indented(out, ctx, e, 0, false)?;
-                writeln!(out, " {KEYWORD}of{RESET} ")?;
-                write_bulleted_sep(out, ctx, bs, level + 1, "|")
-            }
-            Expr::Handle(e, alts) => {
-                write!(out, "{KEYWORD}handle{RESET} ")?;
-                write_indented(out, ctx, e, 0, false)?;
-                writeln!(out, " {KEYWORD}with{RESET} ")?;
-                write_bulleted_sep(out, ctx, alts, level + 1, "|")?;
-                Ok(())
-            }
-            Expr::Do(es) => {
-                writeln!(out, "{KEYWORD}do{RESET}")?;
-                write_bulleted(out, ctx, es, level + 1)
+            Expr::RecSel(e, n) => {
+                write!(out, "{}{PERIOD}{}", e.pretty_string(ctx), n)
             }
 
             Expr::Span(_, box e) => e.pretty_print(out, ctx, level),
@@ -224,9 +226,9 @@ impl PrettyPrint<Context> for Alt {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
-        self.pat.pretty_print(out, ctx, 0)?;
+        self.0.pretty_print(out, ctx, 0)?;
         write!(out, " {PUNCT}->{RESET} ")?;
-        self.expr.pretty_print(out, ctx, 0)
+        self.1.pretty_print(out, ctx, 0)
     }
 }
 
@@ -239,9 +241,9 @@ impl PrettyPrint<Context> for EfAlt {
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
-        self.ef.pretty_print(out, ctx, Default::default())?;
+        self.0.pretty_print(out, ctx, Default::default())?;
         write!(out, " {PUNCT}~>{RESET} ")?;
-        self.expr.pretty_print(out, ctx, 0)
+        self.1.pretty_print(out, ctx, 0)
     }
 }
 
@@ -254,16 +256,20 @@ impl PrettyPrint<Context> for Bind {
     ) -> io::Result<()> {
         match self {
             Bind::NonRec(p, e) => {
-                write!(out, "{PUNCT}let{RESET} ")?;
-                p.pretty_print(out, ctx, level)?;
-                write!(out, " {PUNCT}={RESET} ")?;
-                e.pretty_print(out, ctx, level)
+                write!(
+                    out,
+                    "{KEYWORD}let{RESET} {} {EQUALS} ",
+                    p.pretty_string(ctx)
+                )?;
+                e.pretty_print(out, ctx, 0)
             }
             Bind::Rec(n, e) => {
-                write!(out, "{PUNCT}let{RESET} ")?;
-                write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*n))?;
-                write!(out, " {PUNCT}={RESET} ")?;
-                e.pretty_print(out, ctx, level)
+                write!(
+                    out,
+                    "{KEYWORD}let rec{RESET} {} {EQUALS} ",
+                    n.pretty_string(ctx)
+                )?;
+                e.pretty_print(out, ctx, 0)
             }
         }
     }

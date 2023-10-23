@@ -51,7 +51,8 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         };
 
         println!("inferring type of {}", id.pretty_string(ctx));
-        let (body, ty) = solve::infer(ctx, tctx, body)?;
+        println!("{}", body.pretty_string(ctx));
+        let (body, ty) = solve::infer(ctx, tctx, body, false)?;
         println!("  {}", ty.pretty_string(ctx));
 
         let def = ctx.defs[&id].clone();
@@ -59,13 +60,13 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         def.body = body.clone();
         def.ty = ty;
 
-        println!("====== normal form ======");
-        println!("{}", body.pretty_string(ctx));
-        println!("{:?}", body);
-        let cps_body = cps::transform(ctx, body);
-        println!("====== cps form ======");
-        println!("{}", cps_body.pretty_string(ctx));
-        println!("======================");
+        // println!("====== normal form ======");
+        // println!("{}", body.pretty_string(ctx));
+        // println!("{:?}", body);
+        // let cps_body = cps::transform(ctx, body);
+        // println!("====== cps form ======");
+        // println!("{}", cps_body.pretty_string(ctx));
+        // println!("======================");
     }
 
     // ctx.print_stdout(&());

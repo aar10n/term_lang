@@ -259,28 +259,29 @@ impl From<BTreeSet<Ef>> for Ef {
 pub enum Expr {
     /// Type.
     Type(P<TyE>),
-
     /// Literal.
     Lit(Lit),
     /// Symbol.
     Sym(Ustr),
     /// Variable.
     Var(VarId),
-    /// Record.
-    Record(BTreeMap<Ustr, Expr>),
 
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
     /// Lambda abstraction (λx.a).
     Lambda(P<Expr>, P<Expr>),
-    /// Let binding (x = a in b).
-    Let(Bind, Option<P<Expr>>),
     /// Case expression.
     Case(P<Expr>, Vec<Alt>),
     /// Handle expression.
     Handle(P<Expr>, Option<Vec<EfAlt>>),
     /// Do expression.
     Do(Vec<Expr>),
+    /// Let binding ((x = a, y = b, z = c) in e).
+    Let(Vec<Bind>, Option<P<Expr>>),
+    /// Record expression.
+    Record(BTreeMap<Ustr, Expr>),
+    /// Record select.
+    RecSel(P<Expr>, Ustr),
 
     /// Source span info.
     Span(Span, P<Expr>),
@@ -295,8 +296,20 @@ impl Expr {
         Self::Apply(a.into(), b.into())
     }
 
+    pub fn apply_n(f: Expr, args: impl IntoIterator<Item = Expr>) -> Self {
+        let args = args.into_iter().collect::<Vec<_>>();
+        assert!(!args.is_empty());
+        args.into_iter().fold(f, Self::apply)
+    }
+
     pub fn lambda(p: Expr, b: Expr) -> Self {
         Self::Lambda(p.into(), b.into())
+    }
+
+    pub fn lambda_n(ps: impl IntoIterator<Item = Expr>, b: Expr) -> Self {
+        let ps = ps.into_iter().collect::<Vec<_>>();
+        assert!(!ps.is_empty());
+        ps.into_iter().rev().fold(b, |a, b| Self::lambda(b, a))
     }
 
     pub fn is_var(&self) -> bool {
@@ -304,19 +317,8 @@ impl Expr {
     }
 }
 
-/// An alternative for a "case" expression.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Alt {
-    pub pat: Expr,
-    pub expr: Expr,
-}
-
-/// An alternative for a "handle" expression.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct EfAlt {
-    pub ef: Ef,
-    pub expr: Expr,
-}
+pub type Alt = (Expr /* pattern */, Expr);
+pub type EfAlt = (Ef, Expr);
 
 /// A name binding.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

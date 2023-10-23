@@ -83,8 +83,14 @@ pub fn infer(
     core: &mut core::Context,
     solve: &mut context::TyContext,
     e: Expr,
+    trace: bool,
 ) -> diag::Result<(Expr, TyE)> {
-    let mut ctx = Context::new_normal(core, solve);
+    let mut ctx = if trace {
+        Context::new_tracing(core, solve)
+    } else {
+        Context::new_normal(core, solve)
+    };
+
     let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
         Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
@@ -137,7 +143,7 @@ pub fn sort_dependencies(ctx: &core::Context) -> Vec<VarId> {
 macro_rules! debug_println {
     ($ctx:ident, $($arg:tt)*) => {
         if $ctx.trace {
-            println!($($arg)*);
+            println!("{}", format!($($arg)*).as_str().trim_end());
         }
     };
 }

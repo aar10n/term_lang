@@ -319,7 +319,9 @@ impl Lower for ast::EffectOpImpl {
         let body = if self.params.is_empty() {
             self.expr.lower(ctx)? // variable
         } else {
-            lower_lambda(ctx, &self.params, &self.expr)? // function
+            let ps = self.params.lower(ctx)?;
+            let b = self.expr.lower(ctx)?;
+            Expr::lambda_n(ps, b)
         };
 
         let ty = TyE::infer();
@@ -419,7 +421,7 @@ impl Lower for ast::MethodImpl {
             Def::new(id, ty, expr)
         } else {
             // function
-            let expr = lower_lambda(ctx, &self.params, &self.expr)?;
+            let expr = Expr::lambda_n(self.params.lower(ctx)?, self.expr.lower(ctx)?);
             let ty = TyE::infer();
             Def::new(id, ty, expr)
         })
@@ -492,25 +494,30 @@ impl Lower for ast::Expr {
         use ast::{ExprKind, UnOp};
         use core::{Bind, Expr, Id, Ty};
         let e = match &self.kind {
-            ExprKind::Apply(a, b) => {
-                let a = a.lower(ctx)?;
-                let b = b.lower(ctx)?;
-                Expr::Apply(a.into(), b.into())
+            ExprKind::Apply(box a, box b) => {
+                let mut es = vec![b.lower(ctx)?];
+                let mut f = a;
+                while let ExprKind::Apply(box a1, box b1) = &a.kind {
+                    es.push(b1.lower(ctx)?);
+                    f = a1;
+                }
+
+                let f = f.lower(ctx)?;
+                Expr::apply_n(f, es)
             }
             ExprKind::Binary(op, a, b) => {
                 let op = Expr::Sym(ustr(op.as_str()));
                 let a = a.lower(ctx)?;
                 let b = b.lower(ctx)?;
-                Expr::Apply(Expr::Apply(op.into(), a.into()).into(), b.into())
+                Expr::apply_n(op, vec![a, b])
             }
             ExprKind::Unary(op, a) => {
                 let a = a.lower(ctx)?;
                 if matches!(op, UnOp::Effect) {
-                    // handle default
                     Expr::Handle(a.into(), None)
                 } else {
                     let op = Expr::Sym(ustr(op.as_str()));
-                    Expr::Apply(op.into(), a.into())
+                    Expr::apply(op, a)
                 }
             }
             ExprKind::Case(c) => c.lower(ctx)?,
@@ -521,14 +528,12 @@ impl Lower for ast::Expr {
             ExprKind::Lambda(l) => l.lower(ctx)?,
             ExprKind::Var(v) => v.lower(ctx)?,
             ExprKind::List(es) => {
-                let list_id = expect_data(ctx, "List")?;
-                let nil_id = expect_var(ctx, "Nil")?;
-                let cons_id = expect_var(ctx, "Cons")?;
+                let nil = Expr::Var(expect_var(ctx, "Nil")?);
+                let cons = Expr::Var(expect_var(ctx, "Cons")?);
 
-                // ((<cons> e0) ((<cons> e1) <nil>))
-                let mut expr = Expr::Var(nil_id);
+                let mut expr = nil;
                 for e in es.lower(ctx)?.into_iter().rev() {
-                    expr = make_cons_expr(cons_id, e, expr);
+                    expr = Expr::apply(Expr::apply(cons.clone(), e), expr);
                 }
                 expr
             }
@@ -536,12 +541,9 @@ impl Lower for ast::Expr {
                 let ty_name = format!("Tuple{}", es.len());
                 let tuple_id = expect_var(ctx, &ty_name)?;
 
-                // (((<tuple> e0) e1) e2)
-                let mut expr = Expr::Var(tuple_id);
-                for e in es.lower(ctx)?.into_iter().rev() {
-                    expr = Expr::Apply(expr.into(), e.into());
-                }
-                expr
+                let f = Expr::Var(tuple_id);
+                let es = es.lower(ctx)?;
+                Expr::apply_n(Expr::Var(tuple_id), es)
             }
             ExprKind::Record(fields) => {
                 let mut rec = BTreeMap::new();
@@ -583,34 +585,21 @@ impl Lower for ast::Pat {
             }
             PatKind::DataCon(n, ps) => {
                 let con_id = unwrap_resolved_ident(n)?.data_con_id();
-                let var_id = ctx.ast.con_var_ids[&con_id];
-
-                // (((<con> p0) p1) p2)
-                let mut expr = Expr::Var(var_id);
-                for p in ps.lower(ctx)?.into_iter() {
-                    expr = Expr::Apply(expr.into(), p.into());
-                }
-                expr
+                let var = Expr::Var(ctx.ast.con_var_ids[&con_id]);
+                Expr::apply_n(var, ps.lower(ctx)?)
             }
             PatKind::Tuple(ps) => {
                 let ty_name = format!("Tuple{}", ps.len());
-                let tuple_id = expect_var(ctx, &ty_name)?;
-
-                // (((<tuple> p0) p1) p2)
-                let mut expr = Expr::Var(tuple_id);
-                for p in ps.lower(ctx)?.into_iter().rev() {
-                    expr = Expr::Apply(expr.into(), p.into());
-                }
-                expr
+                let tuple_n = Expr::Var(expect_var(ctx, &ty_name)?);
+                Expr::apply_n(tuple_n, ps.lower(ctx)?)
             }
             PatKind::List(ps) => {
-                let nil_id = expect_var(ctx, "Nil")?;
-                let cons_id = expect_var(ctx, "Cons")?;
+                let nil = Expr::Var(expect_var(ctx, "Nil")?);
+                let cons = Expr::Var(expect_var(ctx, "Cons")?);
 
-                // ((<cons> p0) ((<cons> p1) <nil>))
-                let mut expr = Expr::Var(nil_id);
+                let mut expr = nil;
                 for p in ps.lower(ctx)?.into_iter().rev() {
-                    expr = make_cons_expr(cons_id, p, expr);
+                    expr = Expr::apply(Expr::apply(cons.clone(), p), expr);
                 }
                 expr
             }
@@ -622,10 +611,10 @@ impl Lower for ast::Pat {
                 Expr::Record(rec)
             }
             PatKind::Cons(x, xs) => {
-                let cons_id = expect_var(ctx, "Cons")?;
+                let cons = Expr::Var(expect_var(ctx, "Cons")?);
                 let x = x.lower(ctx)?;
                 let xs = xs.lower(ctx)?;
-                make_cons_expr(cons_id, x, xs)
+                Expr::apply(Expr::apply(cons, x), xs)
             }
             PatKind::Lit(l) => l.lower(ctx)?,
             PatKind::Ident(n) => {
@@ -655,7 +644,7 @@ impl Lower for ast::CaseAlt {
         use core::Alt;
         let pat = self.pat.lower(ctx)?;
         let expr = self.expr.lower(ctx)?;
-        Ok(Alt { pat, expr })
+        Ok((pat, expr))
     }
 }
 
@@ -677,7 +666,7 @@ impl Lower for ast::HandleAlt {
         use core::EfAlt;
         let ef = self.ef.lower(ctx)?;
         let expr = self.expr.lower(ctx)?;
-        Ok(EfAlt { ef, expr })
+        Ok((ef, expr))
     }
 }
 
@@ -702,14 +691,8 @@ impl Lower for ast::If {
         let expr = Expr::Case(
             c.into(),
             vec![
-                Alt {
-                    pat: Expr::Lit(Lit::Bool(true)),
-                    expr: t,
-                },
-                Alt {
-                    pat: Expr::Lit(Lit::Bool(false)),
-                    expr: f,
-                },
+                (Expr::Lit(Lit::Bool(true)), t),
+                (Expr::Lit(Lit::Bool(false)), f),
             ],
         );
         Ok(expr)
@@ -722,8 +705,8 @@ impl Lower for ast::Func {
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Bind, Expr};
         let id = unwrap_resolved_ident(&self.name)?.var_id();
-        let body = lower_lambda(ctx, &self.params, &self.body)?;
-        Ok(Expr::Let(Bind::Rec(id, body.into()), None))
+        let body = Expr::lambda_n(self.params.lower(ctx)?, self.body.lower(ctx)?);
+        Ok(Expr::Let(vec![Bind::Rec(id, body.into())], None))
     }
 }
 
@@ -731,7 +714,10 @@ impl Lower for ast::Lambda {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        lower_lambda(ctx, &self.params, &self.body)
+        use core::Expr;
+        let ps = self.params.lower(ctx)?;
+        let body = self.body.lower(ctx)?;
+        Ok(Expr::lambda_n(ps, body))
     }
 }
 
@@ -743,7 +729,7 @@ impl Lower for ast::Var {
         let pat = self.pat.lower(ctx)?;
         let e = self.expr.lower(ctx)?;
         let b = Bind::NonRec(pat.into(), e.into());
-        Ok(Expr::Let(b, None))
+        Ok(Expr::Let(vec![b], None))
     }
 }
 
@@ -772,14 +758,6 @@ impl Lower for ast::Ident {
     }
 }
 
-pub fn make_cons_expr(cons_id: VarId, a: core::Expr, b: core::Expr) -> core::Expr {
-    use core::Expr;
-    Expr::Apply(
-        Expr::Apply(Expr::Var(cons_id).into(), a.into()).into(),
-        b.into(),
-    )
-}
-
 pub fn make_ty_func(
     ctx: &mut Context,
     params: impl IntoIterator<Item = core::TyE>,
@@ -799,25 +777,25 @@ pub fn make_ty_func(
     }
 }
 
-pub fn lower_lambda(
-    ctx: &mut Context,
-    params: &[Box<ast::Pat>],
-    body: &ast::Expr,
-) -> diag::Result<core::Expr> {
-    use ast::PatKind;
-    use core::{Bind, Expr};
+// pub fn lower_lambda(
+//     ctx: &mut Context,
+//     params: &[Box<ast::Pat>],
+//     body: &ast::Expr,
+// ) -> diag::Result<core::Expr> {
+//     use ast::PatKind;
+//     use core::{Bind, Expr};
 
-    let mut ps = vec![];
-    for p in params.iter().rev() {
-        ps.push(p.lower(ctx)?);
-    }
+//     let mut ps = vec![];
+//     for p in params.iter().rev() {
+//         ps.push(p.lower(ctx)?);
+//     }
 
-    let mut expr = body.lower(ctx)?;
-    for p in &ps {
-        expr = Expr::Lambda(p.clone().into(), expr.into());
-    }
-    Ok(expr)
-}
+//     let mut expr = body.lower(ctx)?;
+//     for p in &ps {
+//         expr = Expr::lambda(p.clone(), expr);
+//     }
+//     Ok(expr)
+// }
 
 pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Result<core::Lit> {
     use ast::LitKind;

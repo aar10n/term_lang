@@ -29,7 +29,7 @@ pub mod chars {
     pub const RPARN: &str = concatcp!(DELIM, ")", RESET);
     pub const PIPE: &str = concatcp!(DELIM, "|", RESET);
 
-    pub const EQUALS: &str = concatcp!(PUNCT, "+", RESET);
+    pub const EQUALS: &str = concatcp!(PUNCT, "=", RESET);
     pub const PLUS: &str = concatcp!(PUNCT, "+", RESET);
     pub const PERIOD: &str = concatcp!(PUNCT, ".", RESET);
     pub const COMMA: &str = concatcp!(PUNCT, ",", RESET);
