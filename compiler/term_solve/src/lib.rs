@@ -93,11 +93,7 @@ pub fn infer(
 
     let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
-            e.with_span(s)
-        } else {
-            e
-        }),
+        Err(e) => Err(e),
     }?;
     let t = hm::generalize(&mut ctx, e_t, &mut Default::default());
     Ok((e, t))
@@ -113,11 +109,7 @@ pub fn satisfy(
     let mut ctx = Context::new_normal(core, solve);
     let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
         Ok(u) => Ok(u),
-        Err(e) => Err(if let Some(s) = ctx.solve.spans.last().copied() {
-            e.with_span(s)
-        } else {
-            e
-        }),
+        Err(e) => Err(e),
     }?;
     let u = hm::update(&mut ctx, e_t);
     let u = hm::unify(&mut ctx, t.clone(), u, 0)?;

@@ -20,8 +20,6 @@ pub struct TyContext {
     pub ty_set: UnionFind<Ty>,
     /// Working effect set.
     pub ef_set: UnionFind<Ef>,
-    /// Relevant source spans.
-    pub spans: Vec<Span>,
 }
 
 impl TyContext {
@@ -31,7 +29,6 @@ impl TyContext {
             open: BTreeSet::default(),
             ty_set: UnionFind::new(),
             ef_set: UnionFind::new(),
-            spans: Vec::default(),
         }
     }
 

@@ -325,11 +325,10 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         if let Some(id) = ident.id {
             // this is a declaration
             if let Id::Var(id) = id {
-                // println!("--> var {} ({:?})", ident.raw, id);
                 if self.scopes.len() == 1 {
+                    // only add to dep graph if its declared at the global scope
                     self.core.dep_graph.insert(id, BTreeSet::new());
                 }
-                // println!("registering var {} ({})", ident.raw, id.raw);
                 self.scope_mut().vars.insert(ident.raw, id);
             }
             return Ok(());

@@ -367,19 +367,19 @@ impl Expr {
     }
 
     pub fn is_sym(&self) -> bool {
-        matches!(self, Self::Sym(_))
+        Self::is(self, |e| matches!(e, Self::Sym(_)))
     }
 
     pub fn is_var(&self) -> bool {
-        matches!(self, Self::Var(_))
+        Self::is(self, |e| matches!(e, Self::Var(_)))
     }
 
     pub fn is_app(&self) -> bool {
-        matches!(self, Self::Apply(..))
+        Self::is(self, |e| matches!(e, Self::Apply(..)))
     }
 
     pub fn is_lam(&self) -> bool {
-        matches!(self, Self::Lambda(..))
+        Self::is(self, |e| matches!(e, Self::Lambda(..)))
     }
 
     // Accessors
@@ -402,22 +402,34 @@ impl Expr {
     // Transformations
     //
 
-    pub fn into_inner(self) -> Self {
+    pub fn with_span(self, span: Span) -> Self {
+        let (e, _) = self.into_inner();
+        Self::Span(span, e.into())
+    }
+
+    pub fn unwrap_inner(self) -> Self {
         match self {
             Expr::Span(_, box inner) => inner,
             _ => self,
         }
     }
 
+    pub fn into_inner(self) -> (Self, Span) {
+        match self {
+            Expr::Span(s, box inner) => (inner, s),
+            _ => (self, Span::default()),
+        }
+    }
+
     pub fn uncurry_apply(self) -> (Expr, Vec<Expr>) {
-        let Self::Apply(box a, box b) = self.into_inner() else {
+        let Self::Apply(box a, box b) = self.unwrap_inner() else {
             panic!("uncurry_apply: not an application");
         };
 
         let mut f = a;
         let mut es = vec![b];
-        while Expr::is(&f, Expr::is_app) {
-            let Self::Apply(box a, box b) = f.into_inner() else {
+        while f.is_app() {
+            let Self::Apply(box a, box b) = f.unwrap_inner() else {
                 unreachable!()
             };
 
@@ -429,14 +441,14 @@ impl Expr {
     }
 
     pub fn uncurry_lambda(self) -> (Vec<Expr>, Expr) {
-        let Self::Lambda(box a, box b) = self.into_inner() else {
+        let Self::Lambda(box a, box b) = self.unwrap_inner() else {
             panic!("uncurry_lambda: not a lambda");
         };
 
         let mut ps = vec![a];
         let mut e = b;
-        while Expr::is(&e, Expr::is_lam) {
-            let Self::Lambda(box a, box b) = e.into_inner() else {
+        while e.is_lam() {
+            let Self::Lambda(box a, box b) = e.unwrap_inner() else {
                 unreachable!()
             };
 
@@ -481,10 +493,10 @@ impl Lit {
     pub fn as_ty(&self) -> Ty {
         match self {
             Self::Unit => Ty::Unit,
-            Self::Bool(_) => Ty::Sym(Ustr::from("Bool")),
-            Self::Int(_) => Ty::Sym(Ustr::from("Int")),
-            Self::Float(_) => Ty::Sym(Ustr::from("Float")),
-            Self::Char(_) => Ty::Sym(Ustr::from("Char")),
+            Self::Bool(_) => Ty::sym("Bool"),
+            Self::Int(_) => Ty::sym("Int"),
+            Self::Float(_) => Ty::sym("Float"),
+            Self::Char(_) => Ty::sym("Char"),
             Self::Symbol(s) => Ty::Sym(*s),
         }
     }

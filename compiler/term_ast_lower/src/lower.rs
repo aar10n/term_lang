@@ -53,11 +53,12 @@ impl<T: Lower> Lower for Vec<T> {
     }
 }
 
-impl<T: Lower> Lower for ast::Node<T> {
-    type Target = T::Target;
+impl<T: Lower<Target = core::Expr>> Lower for ast::Node<T> {
+    type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        self.kind.lower(ctx)
+        use core::Expr;
+        Ok(Expr::Span(self.span, self.kind.lower(ctx)?.into()))
     }
 }
 
@@ -381,7 +382,8 @@ impl Lower for ast::ClassInst {
 
         let mut methods = vec![];
         let mut defs = vec![];
-        for def in self.members.lower(ctx)? {
+        for member in &self.members {
+            let def = member.lower(ctx)?;
             methods.push(def.id);
             defs.push(def);
         }
@@ -487,13 +489,13 @@ impl Lower for ast::Constraint {
     }
 }
 
-impl Lower for ast::Expr {
+impl Lower for ast::ExprKind {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::{ExprKind, UnOp};
         use core::{Bind, Expr, Id, Ty};
-        let e = match &self.kind {
+        let e = match &self {
             ExprKind::Apply(box a, box b) => {
                 let mut f = a;
                 let mut es = vec![b.lower(ctx)?];
@@ -565,22 +567,22 @@ impl Lower for ast::Expr {
             }
         };
 
-        Ok(Expr::Span(self.span, e.into()))
+        Ok(e.into())
     }
 }
 
-impl Lower for ast::Pat {
+impl Lower for ast::PatKind {
     type Target = core::Expr;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use ast::PatKind;
         use core::{DataId, Expr, Id, Lit};
-        let e = match &self.kind {
+        let e = match &self {
             PatKind::Unit => Expr::Lit(Lit::Unit),
             PatKind::Wildcard => {
                 // ignored temporary variable
                 let v = ctx.core.ids.next_var_id();
-                let name = format!("w_{:06x}", self.span.hash());
+                let name = format!("w_{:06x}", v.raw);
                 ctx.core.register_id_name(v, ustr(&name), Span::default());
                 Expr::Var(v)
             }
@@ -623,7 +625,7 @@ impl Lower for ast::Pat {
                 Expr::Var(id)
             }
         };
-        Ok(Expr::Span(self.span, e.into()))
+        Ok(e.into())
     }
 }
 

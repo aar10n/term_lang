@@ -22,6 +22,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
     let tab = TABWIDTH.repeat(level);
     let ttab = TABWIDTH.repeat(level + 1);
+
     let result = match e {
         Type(box t) => (Expr::unit(), t),
         Lit(l) => {
@@ -409,12 +410,15 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             format!("expected record, found `{}`", t.pretty_string(ctx.core)).into_err()?
         }
 
-        Span(s, box e) => {
-            ctx.solve.spans.push(s);
-            let result = algorithmj(ctx, e, level)?;
-            ctx.solve.spans.pop();
-            result
-        }
+        Span(s, box e) => match algorithmj(ctx, e, level) {
+            Ok((e, t)) => (Span(s, e.into()), t),
+            Err(mut err) => {
+                if err.span.is_invalid() {
+                    err.span = s;
+                }
+                return Err(err);
+            }
+        },
     };
     Ok(result)
 }
@@ -443,9 +447,9 @@ pub fn solve_pat(
         }
         Apply(box e1, box e2) => {
             // the outer leftmost expression must be a data constructor var id
-            let (t1, vs1) = if let Expr::Var(id) = e1 {
-                // id is a data constructor. get the type
-                let def = ctx.core.defs.get(id).cloned().unwrap();
+            let (t1, vs1) = if e1.is_var() && let Expr::Var(id) = e1.clone().unwrap_inner() {
+                // id is a data constructor, get the type
+                let def = ctx.core.defs.get(&id).cloned().unwrap();
                 let def = def.borrow();
                 let t = instantiate(ctx, def.ty.clone(), &mut HashMap::default());
                 (t.ty, vec![])
@@ -464,7 +468,15 @@ pub fn solve_pat(
             let t = ty::update(ctx, v);
             Ok((t, vs1.into_iter().chain(vs2).collect()))
         }
-        Span(_, box e) => solve_pat(ctx, e, level),
+        Span(s, box e) => match solve_pat(ctx, e, level) {
+            Ok(res) => Ok(res),
+            Err(mut err) => {
+                if err.span.is_invalid() {
+                    err.span = *s;
+                }
+                return Err(err);
+            }
+        },
         _ => {
             panic!();
             format!("invalid pattern: `{}`", p.pretty_string(ctx.core)).into_err()
