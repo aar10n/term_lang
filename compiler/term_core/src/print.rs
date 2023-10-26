@@ -49,7 +49,7 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
             Ty::Infer => write!(out, "{PUNCT}?{RESET}"),
             Ty::Never => write!(out, "{BLUE}never{RESET}"),
             Ty::Unit => write!(out, "{LPARN}{RPARN}"),
-            Ty::Symbol(s) => write!(out, "{BLUE}{}{RESET}", s.as_str()),
+            Ty::Sym(s) => write!(out, "{BLUE}{}{RESET}", s.as_str()),
             Ty::Mono(id) => write!(out, "{GREEN}{}{RESET}", id),
             Ty::Poly(id) => {
                 let mut params = params.borrow_mut();
@@ -60,10 +60,6 @@ impl PrettyPrint<Context, RefCell<BTreeMap<PolyVarId, Ustr>>> for Ty {
                     params.insert(*id, name);
                     write!(out, "{MAGENTA}{}{RESET}", name)
                 }
-            }
-            Ty::Rec(id, t) => {
-                write!(out, "{BLUE}μ{GREEN}{}{RESET}{PERIOD}", ctx.id_as_str(*id))?;
-                t.pretty_print(out, ctx, 0)
             }
             Ty::Data(id, ts) => {
                 write!(out, "{BLUE}{}{RESET}", ctx.id_as_str(*id))?;

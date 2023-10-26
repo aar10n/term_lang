@@ -804,7 +804,7 @@ pub fn lower_string_lit(ctx: &mut Context, s: impl AsRef<str>) -> diag::Result<c
 }
 
 fn primitive(t: &str) -> core::Ty {
-    core::Ty::Symbol(ustr(t))
+    core::Ty::Sym(ustr(t))
 }
 
 fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {

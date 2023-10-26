@@ -135,25 +135,30 @@ pub enum Ty {
     Never,
     /// The unit type.
     Unit,
-    /// Symbolic constant.
-    Symbol(Ustr),
+    /// Symbolic type.
+    Sym(Ustr),
     /// Mono type variable.
     Mono(MonoVarId),
     /// Poly type variable.
     Poly(PolyVarId),
-    /// Recursive
-    Rec(MonoVarId, P<TyE>),
     /// A data type.
     Data(DataId, Vec<TyE>),
     /// Function type (A -> B).
     Func(P<TyE>, P<TyE>),
-    /// Record type ({a: A, b: B}). invariant: len >= 1
+    /// Record type ({a: A, b: B}).
     Record(BTreeMap<Ustr, TyE>),
     /// Effectful type (t ~ e).
     Effectful(P<Ty>, Ef),
 }
 
 impl Ty {
+    // Constructors
+    //
+
+    pub fn sym(s: impl AsRef<str>) -> Self {
+        Self::Sym(Ustr::from(s.as_ref()))
+    }
+
     pub fn func(a: TyE, b: TyE) -> Self {
         Self::Func(a.into(), b.into())
     }
@@ -171,13 +176,12 @@ impl Ty {
         }
     }
 
-    pub fn is_const(&self) -> bool {
-        matches!(self, Self::Unit | Self::Symbol(_))
-    }
+    // Predicates
+    //
 
     pub fn is_concrete(&self) -> bool {
         match self {
-            Self::Infer | Self::Mono(_) | Self::Poly(_) | Self::Rec(..) => false,
+            Self::Infer | Self::Mono(_) | Self::Poly(_) => false,
             Self::Data(_, ts) => ts.iter().all(|t| t.is_concrete()),
             Self::Func(box a, box b) => a.is_concrete() && b.is_concrete(),
             Self::Record(fs) => fs.values().all(|t| t.is_concrete()),
@@ -188,7 +192,6 @@ impl Ty {
 
     pub fn has_effect(&self) -> bool {
         match self {
-            Self::Rec(_, t) => t.has_effect(),
             Self::Data(_, ts) => ts.iter().any(|t| t.has_effect()),
             Self::Func(a, b) => a.has_effect() || b.has_effect(),
             Self::Record(fs) => fs.values().any(|t| t.has_effect()),
@@ -196,6 +199,9 @@ impl Ty {
             _ => false,
         }
     }
+
+    // Accessors
+    //
 
     pub fn return_ty(&self) -> Option<&TyE> {
         match self {
@@ -285,7 +291,7 @@ pub enum Constraint {
     Empty,
     /// An equality constraint.
     Eq(P<TyE>, P<TyE>),
-    /// A type class constraint.
+    /// Type class constraint.
     Class(ClassId, Vec<TyE>),
 }
 
@@ -314,7 +320,7 @@ pub enum Expr {
     Handle(P<Expr>, Option<Vec<EfAlt>>),
     /// Do expression.
     Do(Vec<Expr>),
-    /// Let binding ((x = a, y = b, z = c) in e).
+    /// Let binding (let \[x = a]... in b).
     Let(Vec<Bind>, Option<P<Expr>>),
     /// Record expression.
     Record(BTreeMap<Ustr, Expr>),
@@ -475,11 +481,11 @@ impl Lit {
     pub fn as_ty(&self) -> Ty {
         match self {
             Self::Unit => Ty::Unit,
-            Self::Bool(_) => Ty::Symbol(Ustr::from("Bool")),
-            Self::Int(_) => Ty::Symbol(Ustr::from("Int")),
-            Self::Float(_) => Ty::Symbol(Ustr::from("Float")),
-            Self::Char(_) => Ty::Symbol(Ustr::from("Char")),
-            Self::Symbol(s) => Ty::Symbol(*s),
+            Self::Bool(_) => Ty::Sym(Ustr::from("Bool")),
+            Self::Int(_) => Ty::Sym(Ustr::from("Int")),
+            Self::Float(_) => Ty::Sym(Ustr::from("Float")),
+            Self::Char(_) => Ty::Sym(Ustr::from("Char")),
+            Self::Symbol(s) => Ty::Sym(*s),
         }
     }
 }

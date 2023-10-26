@@ -27,7 +27,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
         (Infer, t) | (t, Infer) => t,
         (Never, t) => t,
         (Unit, Unit) => Unit,
-        (Symbol(x), Symbol(y)) if x == y => Symbol(x),
+        (Sym(x), Sym(y)) if x == y => Sym(x),
         (t, Mono(x)) | (Mono(x), t) => {
             let tt = t.clone();
             let t = update(ctx, t);
@@ -52,10 +52,6 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
             //     result.pretty_string(ctx)
             // );
             result
-        }
-        (Rec(id1, box t1), Rec(id2, box t2)) if id1 == id2 => {
-            let t = hm::unify(ctx, t1, t2, level + 1)?;
-            Rec(id1, t.into())
         }
         (Data(id1, ts1), Data(id2, ts2)) if id1 == id2 => {
             if ts1.len() != ts2.len() {
@@ -123,7 +119,6 @@ pub fn update(ctx: &mut Context<'_>, t: Ty) -> Ty {
     use Ty::*;
     match t {
         Mono(x) => ctx.solve.ty_set.find(Mono(x)),
-        Rec(id, box t) => Rec(id, hm::update(ctx, t).into()),
         Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::update(ctx, t)).collect()),
         Func(box t1, box t2) => Func(hm::update(ctx, t1).into(), hm::update(ctx, t2).into()),
         Record(fields) => Record(
@@ -151,10 +146,6 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
                 TyE::pure(t)
             }
         },
-        Rec(id, box t) => {
-            let t = hm::instantiate(ctx, t, ps);
-            TyE::pure(Rec(id, t.into()))
-        }
         Data(id, ts) => {
             let ts = ts
                 .into_iter()
@@ -195,10 +186,6 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
                 TyE::pure(Ty::Poly(t))
             }
         },
-        Rec(id, box t) => {
-            let t = hm::generalize(ctx, t, ps);
-            TyE::pure(Rec(id, t.into()))
-        }
         Data(id, ts) => {
             let ts = ts.into_iter().map(|t| hm::generalize(ctx, t, ps)).collect();
             TyE::pure(Data(id, ts))
@@ -227,10 +214,6 @@ pub fn generalize(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<MonoVarId, Poly
 pub fn cannonicalize(ctx: &mut Context<'_>, t: Ty) -> TyE {
     use Ty::*;
     match t {
-        Rec(id, box t) => {
-            let t = hm::cannonicalize(ctx, t);
-            TyE::pure(Rec(id, t.into()))
-        }
         Data(id, ts) => {
             let (ts, f, cs) =
                 ts.into_iter()
@@ -275,7 +258,6 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 
     use Ty::*;
     match t {
-        Rec(_, box t) => hm::ty_occurs(x, t),
         Data(_, ts) => ts.iter().any(|t| hm::ty_occurs(x, t)),
         Func(box t1, box t2) => hm::ty_occurs(x, &t1) || hm::ty_occurs(x, &t2),
         Record(fields) => fields.values().any(|v| hm::ty_occurs(x, &v)),
@@ -287,7 +269,6 @@ pub fn ty_occurs(x: &Ty, t: &Ty) -> bool {
 pub fn ef_occurs(x: &Ef, t: &Ty) -> bool {
     use Ty::*;
     match t {
-        Rec(_, box t) => hm::ef_occurs(x, t),
         Data(_, ts) => ts.iter().any(|t| hm::ef_occurs(x, t)),
         Func(box t1, box t2) => hm::ef_occurs(x, &t1) || hm::ef_occurs(x, &t2),
         Record(fields) => fields.values().any(|v| hm::ef_occurs(x, &v)),
@@ -303,7 +284,6 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
 
     use Ty::*;
     match t {
-        Rec(id, box t) => Rec(id, hm::subst_ty(r, x, t).into()),
         Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::subst_ty(r, x, t)).collect()),
         Func(box t1, box t2) => Func(hm::subst_ty(r, x, t1).into(), hm::subst_ty(r, x, t2).into()),
         Record(fields) => Record(
