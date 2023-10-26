@@ -34,14 +34,13 @@ pub fn new_context() -> Context {
 }
 
 pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<(), Report> {
-    let actx = &mut ast::Context::new();
-    let tctx = &mut solve::TyContext::new();
-
     let file = ctx.sources.get(source_id).unwrap();
     let module = &mut parse::parse_source(file).map_err(|e| Report::from(e.into_diagnostic()))?;
-    pass::collect(actx, ctx, module).into_result()?;
-    pass::resolve(actx, ctx, module).into_result()?;
-    pass::lower_all(actx, ctx, module).into_result()?;
+
+    let ast = &mut ast::Context::new();
+    pass::collect(ast, ctx, module).into_result()?;
+    pass::resolve(ast, ctx, module).into_result()?;
+    pass::lower_all(ast, ctx, module).into_result()?;
     // ctx.print_stdout(&());
 
     let order = solve::sort_dependencies(&ctx);
@@ -55,7 +54,7 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         };
 
         println!("{}", body.pretty_string(ctx));
-        let (body, ty) = solve::infer(ctx, tctx, body, true)?;
+        let (body, ty) = solve::infer(ctx, body, true)?;
         println!("  {}", ty.pretty_string(ctx));
 
         let def = ctx.defs[&id].clone();

@@ -1,4 +1,4 @@
-use crate::{debug_println, hm, Context};
+use crate::{hm, trace_println, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -15,7 +15,7 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
     }
 
     let tab = TABWIDTH.repeat(level);
-    debug_println!(
+    trace_println!(
         ctx,
         "{tab}unify_ef: {} = {}",
         f1.pretty_string(ctx.core),
@@ -28,13 +28,13 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
         (Pure, f) => f,
         (Infer, f) | (f, Infer) => f,
         (f, Mono(x)) | (Mono(x), f) => {
-            let f = ctx.solve.ef_set.find(f);
+            let f = ctx.ef_set.find(f);
             if ef_occurs(&Mono(x), &f) {
                 let mut fs = f.into_set();
                 fs.remove(&Mono(x));
                 Ef::from(fs)
             } else {
-                ctx.solve.ef_set.union(f, Mono(x))
+                ctx.ef_set.union(f, Mono(x))
             }
         }
         (Effect(id1, ts1), Effect(id2, ts2)) if id1 == id2 => {
@@ -72,9 +72,9 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
         }
         (Poly(_), _) | (_, Poly(_)) => panic!("unexpected poly_var in effect"),
         (f1, f2) => {
-            ctx.solve.ty_set.print_stdout(ctx);
+            ctx.ty_set.print_stdout(ctx);
             println!("--");
-            ctx.solve.ef_set.print_stdout(ctx);
+            ctx.ef_set.print_stdout(ctx);
             println!("-----");
             // panic!();
             println!("f1 = {:?}", f1);
@@ -92,7 +92,7 @@ pub fn unify(ctx: &mut Context, f1: Ef, f2: Ef, level: usize) -> diag::Result<Ef
 pub fn update(ctx: &mut Context<'_>, f: Ef) -> Ef {
     use Ef::*;
     match f {
-        Mono(x) => ctx.solve.ef_set.find(Mono(x)),
+        Mono(x) => ctx.ef_set.find(Mono(x)),
         Effect(id, ts) => {
             let ts = ts.into_iter().map(|t| hm::update(ctx, t)).collect();
             Effect(id, ts)
@@ -112,7 +112,7 @@ pub fn instantiate(ctx: &mut Context<'_>, f: Ef, ps: &mut HashMap<PolyVarId, Mon
                 let t = ctx.core.ids.next_mono_var_id();
                 ps.insert(id, t);
                 let f = Ef::Mono(t);
-                ctx.solve.ef_set.insert(f.clone());
+                ctx.ef_set.insert(f.clone());
                 f
             }
         },
@@ -166,7 +166,7 @@ pub fn cannonicalize(ctx: &mut Context<'_>, f: Ef) -> Ef {
             } else if fs.iter().all(|f| matches!(f, Mono(_))) {
                 let mut f = fs.first().unwrap().clone();
                 for f2 in fs.into_iter().skip(1) {
-                    f = ctx.solve.ef_set.union(f, f2);
+                    f = ctx.ef_set.union(f, f2);
                 }
                 return f;
             }

@@ -2,7 +2,7 @@ use crate::core::*;
 use term_common::{declare_id_collection, declare_union_id, source::SourceMap, span::Spanned};
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
@@ -37,11 +37,12 @@ declare_union_id! {
 pub struct Context {
     pub ids: Ids,
     pub sources: SourceMap,
-    pub builtins: UstrSet,
-    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
 
+    pub builtins: UstrSet,
+    pub id_names: BTreeMap<Id, (Ustr, Span)>,
     pub global_names: UstrMap<Id>,
     pub global_types: UstrMap<Id>,
+    pub name_scopes: BTreeMap<ParentId, NameScope>,
 
     pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
     pub datas: BTreeMap<DataId, Rc<RefCell<Data>>>,
@@ -50,10 +51,8 @@ pub struct Context {
     pub handlers: BTreeMap<HandlerId, Rc<RefCell<Handler>>>,
     pub insts: BTreeMap<InstId, Rc<RefCell<Inst>>>,
 
-    /// id -> name and span.
-    id_names: BTreeMap<Id, (Ustr, Span)>,
-    /// Scoped namespaces tied to a parent (e.g. class methods, effect ops).
-    scopes: BTreeMap<ParentId, Scope>,
+    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
+    pub typings: HashMap<Expr, TyE>,
 }
 
 impl Context {
@@ -61,11 +60,12 @@ impl Context {
         Self {
             ids: Ids::default(),
             sources: SourceMap::default(),
-            builtins: UstrSet::default(),
-            dep_graph: BTreeMap::default(),
 
+            builtins: UstrSet::default(),
+            id_names: BTreeMap::default(),
             global_names: UstrMap::default(),
             global_types: UstrMap::default(),
+            name_scopes: BTreeMap::default(),
 
             classes: BTreeMap::default(),
             datas: BTreeMap::default(),
@@ -74,8 +74,8 @@ impl Context {
             handlers: BTreeMap::default(),
             insts: BTreeMap::default(),
 
-            id_names: BTreeMap::default(),
-            scopes: BTreeMap::default(),
+            dep_graph: BTreeMap::default(),
+            typings: HashMap::default(),
         }
     }
 
@@ -164,7 +164,7 @@ impl Context {
         }
 
         if let Some(existing_id) = self
-            .scopes
+            .name_scopes
             .get(&parent_id)
             .and_then(|ns| ns.names.get(&name))
         {
@@ -172,9 +172,9 @@ impl Context {
         }
 
         self.id_names.insert(id, (name, span));
-        self.scopes
+        self.name_scopes
             .entry(parent_id)
-            .or_insert_with(|| Scope::new(parent_id.into()))
+            .or_insert_with(|| NameScope::new(parent_id.into()))
             .names
             .insert(name, id);
         Ok(())
@@ -186,7 +186,7 @@ impl Context {
         name: &Ustr,
     ) -> Option<Id> {
         let parent_id = parent_id.into();
-        self.scopes
+        self.name_scopes
             .get(&parent_id)
             .and_then(|ns| ns.names.get(name))
             .copied()
@@ -199,14 +199,13 @@ pub enum Exclusivity {
     None,
 }
 
-/// A scope for names.
 #[derive(Clone, Debug, Default)]
-struct Scope {
+pub struct NameScope {
     pub parent_id: Option<ParentId>,
     pub names: UstrMap<Id>,
 }
 
-impl Scope {
+impl NameScope {
     fn new(parent_id: ParentId) -> Self {
         Self {
             parent_id: Some(parent_id),

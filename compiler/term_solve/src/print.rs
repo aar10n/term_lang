@@ -1,5 +1,5 @@
-use crate::type_env::TypeEnv;
-use crate::{topo_sort::TopologicalSort, union_find::UnionFind, Context};
+use crate::Context;
+use crate::{type_env::TypeEnv, union_find::UnionFind};
 use term_core as core;
 use term_print as print;
 
@@ -53,34 +53,6 @@ where
             )?;
         }
 
-        Ok(())
-    }
-}
-
-impl<'a, T, Info> PrettyPrint<core::Context, Info> for TopologicalSort<T>
-where
-    T: PrettyPrint<core::Context, Info> + Clone + Ord + Eq,
-    Info: Default + Clone,
-{
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &core::Context,
-        level: Info,
-    ) -> io::Result<()> {
-        for (prec, dep) in &self.top {
-            writeln!(
-                out,
-                "({}) {} | {}",
-                dep.num_prec,
-                prec.pretty_string(ctx),
-                dep.succ
-                    .iter()
-                    .map(|id| id.pretty_string(ctx))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
-        }
         Ok(())
     }
 }

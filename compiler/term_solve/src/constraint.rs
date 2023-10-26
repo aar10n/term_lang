@@ -1,4 +1,4 @@
-use crate::{debug_println, ef, hm, ty, Context};
+use crate::{ef, hm, trace_println, ty, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;

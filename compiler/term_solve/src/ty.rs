@@ -1,4 +1,4 @@
-use crate::{debug_println, ef, hm, Context};
+use crate::{ef, hm, trace_println, Context};
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -15,7 +15,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
     }
 
     let tab = TABWIDTH.repeat(level);
-    debug_println!(
+    trace_println!(
         ctx,
         "{tab}unify_ty: {} = {}",
         t1.pretty_string(ctx.core),
@@ -44,7 +44,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
                 )
                 .into_diagnostic());
             }
-            let result = ctx.solve.ty_set.union(t.clone(), Mono(x));
+            let result = ctx.ty_set.union(t.clone(), Mono(x));
             // debug_println!(
             //     "union({}, {}) -> {}",
             //     t.pretty_string(ctx),
@@ -118,7 +118,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
 pub fn update(ctx: &mut Context<'_>, t: Ty) -> Ty {
     use Ty::*;
     match t {
-        Mono(x) => ctx.solve.ty_set.find(Mono(x)),
+        Mono(x) => ctx.ty_set.find(Mono(x)),
         Data(id, ts) => Data(id, ts.into_iter().map(|t| hm::update(ctx, t)).collect()),
         Func(box t1, box t2) => Func(hm::update(ctx, t1).into(), hm::update(ctx, t2).into()),
         Record(fields) => Record(
@@ -142,7 +142,7 @@ pub fn instantiate(ctx: &mut Context<'_>, t: Ty, ps: &mut HashMap<PolyVarId, Mon
                 let t = ctx.core.ids.next_mono_var_id();
                 ps.insert(id, t);
                 let t = Ty::Mono(t);
-                ctx.solve.ty_set.insert(t.clone());
+                ctx.ty_set.insert(t.clone());
                 TyE::pure(t)
             }
         },

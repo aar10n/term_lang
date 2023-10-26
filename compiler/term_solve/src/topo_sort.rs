@@ -1,8 +1,10 @@
+use term_print::{PrettyPrint, PrettyString};
+
 use std::collections::{btree_map::Entry, BTreeMap, BTreeSet};
-use std::hash::Hash;
+use std::io;
 
 #[derive(Clone, Debug)]
-pub(crate) struct Dependency<T> {
+pub struct Dependency<T> {
     pub num_prec: usize,
     pub succ: BTreeSet<T>,
 }
@@ -18,7 +20,7 @@ impl<T: Ord + Eq> Dependency<T> {
 
 #[derive(Clone, Debug)]
 pub struct TopologicalSort<T> {
-    pub(crate) top: BTreeMap<T, Dependency<T>>,
+    pub top: BTreeMap<T, Dependency<T>>,
 }
 
 impl<T> Default for TopologicalSort<T> {
@@ -66,7 +68,7 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
                 e.insert(dep);
             }
             Entry::Occupied(e) => {
-                let mut dep = e.into_mut();
+                let dep = e.into_mut();
                 if !dep.succ.insert(succ.clone()) {
                     return;
                 }
@@ -122,5 +124,33 @@ impl<T: Clone + Ord + Eq + std::fmt::Display> TopologicalSort<T> {
             println!("  {}: (#prec: {}, #succ: {})", k, v.num_prec, v.succ.len());
         }
         println!("}}");
+    }
+}
+
+impl<'a, T, Context, Info> PrettyPrint<Context, Info> for TopologicalSort<T>
+where
+    T: PrettyPrint<Context, Info> + Clone + Ord + Eq,
+    Info: Default + Clone,
+{
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        _: Info,
+    ) -> io::Result<()> {
+        for (prec, dep) in &self.top {
+            writeln!(
+                out,
+                "({}) {} | {}",
+                dep.num_prec,
+                prec.pretty_string(ctx),
+                dep.succ
+                    .iter()
+                    .map(|id| id.pretty_string(ctx))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        Ok(())
     }
 }

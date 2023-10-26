@@ -9,37 +9,43 @@ use std::collections::{BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
 use ustr::Ustr;
 
-/// Type context.
-#[derive(Debug)]
-pub struct TyContext {
-    /// Type environment.
-    pub typings: TypeEnv,
-    /// The set of unsolved type variables.
-    pub open: BTreeSet<MonoVarId>,
-    /// Working type set.
+pub struct Context<'ctx> {
+    pub core: &'ctx mut core::Context,
+    pub trace: bool,
+
+    pub typ_env: TypeEnv,
     pub ty_set: UnionFind<Ty>,
-    /// Working effect set.
     pub ef_set: UnionFind<Ef>,
 }
 
-impl TyContext {
-    pub fn new() -> Self {
+impl<'ctx> Context<'ctx> {
+    pub fn new(core: &'ctx mut core::Context, trace: bool) -> Self {
+        let typ_env = TypeEnv::from(core.typings.clone());
         Self {
-            typings: TypeEnv::new(),
-            open: BTreeSet::default(),
+            core,
+            trace,
+            typ_env,
             ty_set: UnionFind::new(),
             ef_set: UnionFind::new(),
         }
     }
 
-    /// Registers a type variable.
-    pub fn new_ty_var(&mut self, id: MonoVarId) -> Ty {
+    pub fn new_normal(core: &'ctx mut core::Context) -> Self {
+        Self::new(core, false)
+    }
+
+    pub fn new_tracing(core: &'ctx mut core::Context) -> Self {
+        Self::new(core, true)
+    }
+
+    pub fn new_ty_var(&mut self) -> Ty {
+        let id = self.core.ids.next_mono_var_id();
         self.ty_set.insert(Ty::Mono(id));
         Ty::Mono(id)
     }
 
-    /// Registers an effect variable.
-    pub fn new_ef_var(&mut self, id: MonoVarId) -> Ef {
+    pub fn new_ef_var(&mut self) -> Ef {
+        let id = self.core.ids.next_mono_var_id();
         self.ef_set.insert(Ef::Mono(id));
         Ef::Mono(id)
     }
