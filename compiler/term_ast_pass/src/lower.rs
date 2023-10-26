@@ -36,6 +36,12 @@ impl<'ctx> LowerVisitor<'ctx> {
         );
         self.core.defs.insert(def.id, RefCell::new(def).into());
     }
+
+    pub fn register_defs(&mut self, defs: impl IntoIterator<Item = core::Def>) {
+        for def in defs {
+            self.register_def(def);
+        }
+    }
 }
 
 impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
@@ -50,10 +56,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
         let (data, defs) = data.lower_ast_core(self.ast, self.core)?;
         self.core.datas.insert(data.id, RefCell::new(data).into());
-
-        for def in defs {
-            self.register_def(def);
-        }
+        self.register_defs(defs);
         Ok(())
     }
 
@@ -63,27 +66,23 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         self.core
             .effects
             .insert(effect.id, RefCell::new(effect).into());
-
-        for def in defs {
-            self.register_def(def);
-        }
+        self.register_defs(defs);
         Ok(())
     }
 
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
-        let class = class.lower_ast_core(self.ast, self.core)?;
+        let (class, names) = class.lower_ast_core(self.ast, self.core)?;
         self.core
             .classes
             .insert(class.id, RefCell::new(class).into());
+
+        for name in names {
+            self.ast.ambiguous_names.insert(name);
+        }
         Ok(())
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
-        println!(
-            "lowering var decl: {} : {}",
-            var.name.pretty_string(self.ast),
-            var.ty.pretty_string(self.ast)
-        );
         if let Some(def) = var.lower_ast_core(self.ast, self.core)? {
             self.register_def(def);
         }
@@ -115,8 +114,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     }
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let inst = inst.lower_ast_core(self.ast, self.core)?;
+        let (inst, defs) = inst.lower_ast_core(self.ast, self.core)?;
         self.core.insts.insert(inst.id, RefCell::new(inst).into());
+        self.register_defs(defs);
         Ok(())
     }
 

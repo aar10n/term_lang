@@ -319,9 +319,86 @@ pub fn write_indented<T: PrettyPrint<Ctx, usize>, Output: io::Write, Ctx>(
     level: usize,
     first: bool,
 ) -> io::Result<()> {
-    let mut buf = Vec::new();
-    t.pretty_print(&mut IndentWriter::new(&mut buf, level), ctx, level)?;
-    let s = String::from_utf8(buf).unwrap();
-    let tab = TABWIDTH.repeat(level * (first as usize));
-    write!(out, "{tab}{}", s.trim_end())
+    let tab = TABWIDTH.repeat(level);
+
+    let s = t.pretty_string(ctx);
+    let ls = s.split("\n").into_iter().collect::<Vec<_>>();
+    let (x, xs) = ls.split_first().unwrap();
+    if first {
+        writeln!(out, "{tab}{}", x.trim_matches('\n'))?;
+    } else {
+        writeln!(out, "{}", x.trim_matches('\n'))?;
+    }
+    for x in xs {
+        let x = x.trim_matches('\n');
+        if !x.is_empty() {
+            writeln!(out, "{tab}{}", x)?;
+        }
+    }
+    Ok(())
+}
+
+pub struct Joined<'a, I> {
+    pub sep: String,
+    pub items: &'a I,
+}
+
+impl<'a, I> Joined<'a, I> {
+    pub fn new<S: AsRef<str>>(sep: S, items: &'a I) -> Self {
+        Self {
+            sep: sep.as_ref().to_owned(),
+            items,
+        }
+    }
+}
+
+impl<'a, I, T: PrettyPrint<Ctx, Info>, Ctx, Info: Clone + Default> PrettyPrint<Ctx, Info>
+    for Joined<'a, I>
+where
+    for<'b> &'b I: IntoIterator<Item = &'b T>,
+{
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Ctx,
+        _: Info,
+    ) -> io::Result<()> {
+        for (i, item) in self.items.into_iter().enumerate() {
+            if i > 0 {
+                write!(out, "{}", self.sep)?;
+            }
+            item.pretty_print(out, ctx, Info::default())?;
+        }
+        Ok(())
+    }
+}
+
+pub struct Mapped<'a, I, F> {
+    pub items: &'a I,
+    pub f: F,
+}
+
+impl<'a, I, F> Mapped<'a, I, F> {
+    pub fn new(items: &'a I, f: F) -> Self {
+        Self { items, f }
+    }
+}
+
+impl<'a, I, F, T: PrettyPrint<Ctx, Info>, Ctx, Info: Clone + Default> PrettyPrint<Ctx, Info>
+    for Mapped<'a, I, F>
+where
+    for<'b> &'b I: IntoIterator<Item = &'b T>,
+    F: Fn(&Ctx, &T) -> String,
+{
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Ctx,
+        _: Info,
+    ) -> io::Result<()> {
+        for item in self.items.into_iter() {
+            write!(out, "{}", (self.f)(ctx, item))?;
+        }
+        Ok(())
+    }
 }

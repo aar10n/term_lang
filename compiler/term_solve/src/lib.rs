@@ -127,6 +127,7 @@ pub fn satisfy(
 pub fn sort_dependencies(ctx: &core::Context) -> Vec<VarId> {
     let mut topo = TopologicalSort::<VarId>::new();
     for (id, depends_on) in &ctx.dep_graph {
+        topo.declare_item(*id);
         for dep_id in depends_on {
             topo.add_dependency(dep_id.clone(), id.clone());
         }

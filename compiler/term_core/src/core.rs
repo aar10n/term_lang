@@ -77,11 +77,21 @@ impl TyE {
         }
     }
 
-    pub fn pure_func(a: TyE, b: TyE) -> Self {
+    pub fn func(a: TyE, b: TyE) -> Self {
+        let (rt, f) = b.split_ef();
         Self {
-            ty: Ty::Func(a.into(), b.into()),
-            ef: Ef::Pure,
+            ty: Ty::Func(a.into(), rt.into()),
+            ef: f,
             cs: vec![],
+        }
+    }
+
+    pub fn nary_func(ts: impl IntoIterator<Item = TyE>, rt: TyE) -> Self {
+        let ts = ts.into_iter().collect::<Vec<_>>();
+        if ts.is_empty() {
+            Self::func(TyE::pure(Ty::Unit), rt.into())
+        } else {
+            ts.into_iter().fold(rt, |f_t, t| TyE::func(t, f_t))
         }
     }
 
@@ -144,6 +154,23 @@ pub enum Ty {
 }
 
 impl Ty {
+    pub fn func(a: TyE, b: TyE) -> Self {
+        Self::Func(a.into(), b.into())
+    }
+
+    pub fn nary_func(ts: impl IntoIterator<Item = TyE>, rt: TyE) -> Self {
+        let ts = ts.into_iter().collect::<Vec<_>>();
+        if ts.is_empty() {
+            Self::func(TyE::pure(Ty::Unit), rt.into())
+        } else {
+            let (t, f, _) = ts
+                .into_iter()
+                .fold(rt, |f_t, t| TyE::func(t, f_t))
+                .into_tuple();
+            Ty::Effectful(t.into(), f)
+        }
+    }
+
     pub fn is_const(&self) -> bool {
         matches!(self, Self::Unit | Self::Symbol(_))
     }
@@ -251,6 +278,17 @@ impl From<BTreeSet<Ef>> for Ef {
     }
 }
 
+/// A type constraint.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Constraint {
+    /// Empty constraint.
+    Empty,
+    /// An equality constraint.
+    Eq(P<TyE>, P<TyE>),
+    /// A type class constraint.
+    Class(ClassId, Vec<TyE>),
+}
+
 //
 //
 
@@ -288,6 +326,9 @@ pub enum Expr {
 }
 
 impl Expr {
+    // Constructors
+    //
+
     pub fn unit() -> Self {
         Self::Lit(Lit::Unit)
     }
@@ -312,8 +353,92 @@ impl Expr {
         ps.into_iter().rev().fold(b, |a, b| Self::lambda(b, a))
     }
 
+    // Predicates
+    //
+
+    pub fn is(e: &Self, pred: impl Fn(&Self) -> bool) -> bool {
+        pred(e.inner())
+    }
+
+    pub fn is_sym(&self) -> bool {
+        matches!(self, Self::Sym(_))
+    }
+
     pub fn is_var(&self) -> bool {
         matches!(self, Self::Var(_))
+    }
+
+    pub fn is_app(&self) -> bool {
+        matches!(self, Self::Apply(..))
+    }
+
+    pub fn is_lam(&self) -> bool {
+        matches!(self, Self::Lambda(..))
+    }
+
+    // Accessors
+    //
+
+    pub fn inner(&self) -> &Self {
+        match self {
+            Expr::Span(_, ref inner) => inner,
+            _ => self,
+        }
+    }
+
+    pub fn inner_mut(&mut self) -> &mut Self {
+        match self {
+            Expr::Span(_, ref mut inner) => inner,
+            _ => self,
+        }
+    }
+
+    // Transformations
+    //
+
+    pub fn into_inner(self) -> Self {
+        match self {
+            Expr::Span(_, box inner) => inner,
+            _ => self,
+        }
+    }
+
+    pub fn uncurry_apply(self) -> (Expr, Vec<Expr>) {
+        let Self::Apply(box a, box b) = self.into_inner() else {
+            panic!("uncurry_apply: not an application");
+        };
+
+        let mut f = a;
+        let mut es = vec![b];
+        while Expr::is(&f, Expr::is_app) {
+            let Self::Apply(box a, box b) = f.into_inner() else {
+                unreachable!()
+            };
+
+            f = a;
+            es.push(b);
+        }
+        es.reverse();
+        (f, es)
+    }
+
+    pub fn uncurry_lambda(self) -> (Vec<Expr>, Expr) {
+        let Self::Lambda(box a, box b) = self.into_inner() else {
+            panic!("uncurry_lambda: not a lambda");
+        };
+
+        let mut ps = vec![a];
+        let mut e = b;
+        while Expr::is(&e, Expr::is_lam) {
+            let Self::Lambda(box a, box b) = e.into_inner() else {
+                unreachable!()
+            };
+
+            ps.push(a);
+            e = b;
+        }
+        ps.reverse();
+        (ps, e)
     }
 }
 
@@ -327,17 +452,6 @@ pub enum Bind {
     NonRec(P<Expr>, P<Expr>),
     /// A recursive binding (f = a).
     Rec(VarId, P<Expr>),
-}
-
-/// A type constraint.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Constraint {
-    /// Empty constraint.
-    Empty,
-    /// An equality constraint.
-    Eq(P<TyE>, P<TyE>),
-    /// A type class constraint.
-    Class(ClassId, Vec<TyE>),
 }
 
 /// A literal.

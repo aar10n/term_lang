@@ -27,6 +27,9 @@ pub fn new_context() -> Context {
     ctx.register_builtin("panic");
     ctx.register_builtin("builtin_put_char");
     ctx.register_builtin("builtin_get_char");
+
+    ctx.register_builtin("builtin_add_int");
+    ctx.register_builtin("builtin_sub_int");
     ctx
 }
 
@@ -39,18 +42,18 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
     pass::collect(actx, ctx, module).into_result()?;
     pass::resolve(actx, ctx, module).into_result()?;
     pass::lower_all(actx, ctx, module).into_result()?;
-    // module.print_stdout(&ast);
     // ctx.print_stdout(&());
 
     let order = solve::sort_dependencies(&ctx);
     for id in order {
+        println!("inferring type of {}", id.pretty_string(ctx));
+
         let body = {
             let def = ctx.defs[&id].clone();
             let def = def.borrow();
             def.body.clone()
         };
 
-        println!("inferring type of {}", id.pretty_string(ctx));
         println!("{}", body.pretty_string(ctx));
         let (body, ty) = solve::infer(ctx, tctx, body, false)?;
         println!("  {}", ty.pretty_string(ctx));
@@ -59,18 +62,9 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         let mut def = def.borrow_mut();
         def.body = body.clone();
         def.ty = ty;
-
-        // println!("====== normal form ======");
-        // println!("{}", body.pretty_string(ctx));
-        // println!("{:?}", body);
-        // let cps_body = cps::transform(ctx, body);
-        // println!("====== cps form ======");
-        // println!("{}", cps_body.pretty_string(ctx));
-        // println!("======================");
     }
 
     // ctx.print_stdout(&());
-
     println!("{GREEN}Done{RESET}");
     Ok(())
 }

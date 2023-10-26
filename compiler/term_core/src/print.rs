@@ -9,11 +9,9 @@ use term_print::ansi::{
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, ITALIC, KEYWORD, MAGENTA, PUNCT, RED, RESET, TAG, TITLE,
     UNDERLINE,
 };
-use term_print::write_bulleted_sep;
-use term_print::write_indented;
 use term_print::{
-    format_list, write_bulleted, write_delimited_list_if_many, write_list, PrettyPrint,
-    PrettyString, TABWIDTH,
+    format_list, write_bulleted, write_bulleted_sep, write_delimited_list_if_many, write_indented,
+    write_list, Mapped, PrettyPrint, PrettyString, TABWIDTH,
 };
 
 use std::cell::RefCell;
@@ -157,7 +155,7 @@ impl PrettyPrint<Context> for Expr {
         match self {
             Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
-            Expr::Sym(n) => write!(out, "{BLUE}{}{RESET}", n),
+            Expr::Sym(n) => write!(out, "{BLUE}`{}`{RESET}", n),
             Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
 
             Expr::Apply(a, b) => {
@@ -172,21 +170,45 @@ impl PrettyPrint<Context> for Expr {
                 write!(out, "{LAMBDA}{}{PERIOD} ", p.pretty_string(ctx))?;
                 t.pretty_print(out, ctx, 0)
             }
-            Expr::Case(e, bs) => {
+            Expr::Case(e, alts) => {
                 write!(out, "{KEYWORD}case{RESET} ")?;
-                write_indented(out, ctx, e, 0, false)?;
-                writeln!(out, " {KEYWORD}of{RESET} ")?;
-                write_bulleted_sep(out, ctx, bs, level + 1, "|")
+                write_indented(out, ctx, e, level, false)?;
+                writeln!(out, "{tab}{KEYWORD}of{RESET} ")?;
+                write_indented(
+                    out,
+                    ctx,
+                    &Mapped::new(alts, |ctx: &_, alt: &Alt| -> String {
+                        format!("{PIPE_SEP}{}\n", alt.pretty_string(ctx).trim_end())
+                    }),
+                    level + 1,
+                    true,
+                )
             }
-            Expr::Handle(e, alts) => {
+            Expr::Handle(e, None) => {
+                write!(out, "{KEYWORD}handle default{RESET} ")?;
+                write_indented(out, ctx, e, level, false)?;
+                Ok(())
+            }
+            Expr::Handle(e, Some(alts)) => {
                 write!(out, "{KEYWORD}handle{RESET} ")?;
-                write_indented(out, ctx, e, 0, false)?;
-                writeln!(out, " {KEYWORD}with{RESET} ")?;
-                write_bulleted_sep(out, ctx, alts, level + 1, "|")
+                write_indented(out, ctx, e, level, false)?;
+                writeln!(out, "{KEYWORD}with{RESET}")?;
+                write_indented(
+                    out,
+                    ctx,
+                    &Mapped::new(alts, |ctx: &_, alt: &EfAlt| -> String {
+                        format!("{PIPE_SEP}{}\n", alt.pretty_string(ctx).trim_end())
+                    }),
+                    level + 1,
+                    true,
+                )
             }
             Expr::Do(es) => {
                 writeln!(out, "{KEYWORD}do{RESET}")?;
-                write_bulleted(out, ctx, es, level + 1)
+                for e in es {
+                    write_indented(out, ctx, e, level + 1, true);
+                }
+                Ok(())
             }
             Expr::Let(bs, e) => {
                 write_list(out, ctx, COMMA_SEP, bs)?;
@@ -340,7 +362,7 @@ impl PrettyPrint<Context> for Def {
             writeln!(out, "{ttab}{ATTR}body:{RESET} {BOLD}<builtin>{RESET}")?;
         } else {
             writeln!(out, "{ttab}{ATTR}body:{RESET}")?;
-            self.body.pretty_print(out, ctx, level + 1)?;
+            write_indented(out, ctx, &self.body, level + 1, true)?;
         }
         Ok(())
     }

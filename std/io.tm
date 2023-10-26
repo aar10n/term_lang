@@ -31,8 +31,7 @@ default handler stdio for IO
 
 
 println s = 
-    handle 
-        case s
+    handle case s
         | [] -> write_char '\n'
         | x:xs -> write_char x; println xs
         ;

@@ -42,6 +42,16 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
         self.top.is_empty()
     }
 
+    pub fn declare_item(&mut self, item: impl Into<T>) {
+        match self.top.entry(item.into()) {
+            Entry::Vacant(e) => {
+                let dep = Dependency::new();
+                e.insert(dep);
+            }
+            Entry::Occupied(_) => {}
+        }
+    }
+
     pub fn add_dependency(&mut self, dependent: impl Into<T>, dependee: impl Into<T>) {
         let prec = dependent.into();
         let succ = dependee.into();

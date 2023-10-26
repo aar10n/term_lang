@@ -1,4 +1,3 @@
-// use crate::*;
 use super::Context;
 use term_ast as ast;
 use term_ast::visit::{Visit, Visitor};
@@ -14,7 +13,7 @@ use std::cell::RefCell;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
-use ustr::{ustr, UstrMap};
+use ustr::{ustr, Ustr, UstrMap};
 
 pub trait Lower {
     type Target: Clone;
@@ -330,34 +329,33 @@ impl Lower for ast::EffectOpImpl {
 }
 
 impl Lower for ast::ClassDecl {
-    type Target = core::Class;
+    type Target = (core::Class, Vec<Ustr>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use ast::MemberDeclKind;
         use core::Class;
         let id = self.name.id.unwrap().class_id();
         let (params, constraints) = self.ty_params.lower(ctx)?;
-        let methods = self.members.lower(ctx)?;
 
-        Ok(Class {
+        let mut names = vec![];
+        let mut methods = vec![];
+        for member in &self.members {
+            match &member.kind {
+                MemberDeclKind::AssocTy(_) => todo!(),
+                MemberDeclKind::Method(method) => {
+                    methods.push(method.lower(ctx)?);
+                }
+            }
+        }
+
+        let class = Class {
             id,
             params,
             constraints,
             methods,
             insts: vec![],
-        })
-    }
-}
-
-impl Lower for ast::MemberDeclKind {
-    type Target = core::Method;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use ast::MemberDeclKind;
-        use core::Method;
-        Ok((match &self {
-            MemberDeclKind::AssocTy(_) => todo!(),
-            MemberDeclKind::Method(method) => method.lower(ctx)?,
-        }))
+        };
+        Ok((class, names))
     }
 }
 
@@ -365,7 +363,7 @@ impl Lower for ast::MethodDecl {
     type Target = core::Method;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::Method;
+        use core::{Def, Method};
         let id = unwrap_resolved_ident(&self.name)?.decl_id();
         let ty = self.ty.lower(ctx)?;
         Ok(Method { id, ty })
@@ -373,7 +371,7 @@ impl Lower for ast::MethodDecl {
 }
 
 impl Lower for ast::ClassInst {
-    type Target = core::Inst;
+    type Target = (core::Inst, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Inst;
@@ -382,17 +380,19 @@ impl Lower for ast::ClassInst {
         let (params, constraints) = self.ty_args.lower(ctx)?;
 
         let mut methods = vec![];
+        let mut defs = vec![];
         for def in self.members.lower(ctx)? {
             methods.push(def.id);
-            ctx.core.defs.insert(def.id, RefCell::new(def).into());
+            defs.push(def);
         }
 
-        Ok(Inst {
+        let inst = Inst {
             id,
             params,
             constraints,
             methods,
-        })
+        };
+        Ok((inst, defs))
     }
 }
 
@@ -495,12 +495,13 @@ impl Lower for ast::Expr {
         use core::{Bind, Expr, Id, Ty};
         let e = match &self.kind {
             ExprKind::Apply(box a, box b) => {
-                let mut es = vec![b.lower(ctx)?];
                 let mut f = a;
-                while let ExprKind::Apply(box a1, box b1) = &a.kind {
+                let mut es = vec![b.lower(ctx)?];
+                while let ExprKind::Apply(box a1, box b1) = &f.kind {
                     es.push(b1.lower(ctx)?);
                     f = a1;
                 }
+                es.reverse();
 
                 let f = f.lower(ctx)?;
                 Expr::apply_n(f, es)
@@ -599,7 +600,7 @@ impl Lower for ast::Pat {
 
                 let mut expr = nil;
                 for p in ps.lower(ctx)?.into_iter().rev() {
-                    expr = Expr::apply(Expr::apply(cons.clone(), p), expr);
+                    expr = Expr::apply_n(cons.clone(), vec![p, expr]);
                 }
                 expr
             }
@@ -614,7 +615,7 @@ impl Lower for ast::Pat {
                 let cons = Expr::Var(expect_var(ctx, "Cons")?);
                 let x = x.lower(ctx)?;
                 let xs = xs.lower(ctx)?;
-                Expr::apply(Expr::apply(cons, x), xs)
+                Expr::apply_n(cons, vec![x, xs])
             }
             PatKind::Lit(l) => l.lower(ctx)?,
             PatKind::Ident(n) => {
@@ -767,7 +768,7 @@ pub fn make_ty_func(
     use core::{Ty, TyE};
     let params = params.into_iter().collect::<Vec<_>>();
     if params.is_empty() {
-        TyE::pure_func(TyE::pure(Ty::Unit), ret_t)
+        TyE::func(TyE::pure(Ty::Unit), ret_t)
     } else {
         let mut t = ret_t;
         for p in params.into_iter().rev() {
@@ -776,26 +777,6 @@ pub fn make_ty_func(
         t
     }
 }
-
-// pub fn lower_lambda(
-//     ctx: &mut Context,
-//     params: &[Box<ast::Pat>],
-//     body: &ast::Expr,
-// ) -> diag::Result<core::Expr> {
-//     use ast::PatKind;
-//     use core::{Bind, Expr};
-
-//     let mut ps = vec![];
-//     for p in params.iter().rev() {
-//         ps.push(p.lower(ctx)?);
-//     }
-
-//     let mut expr = body.lower(ctx)?;
-//     for p in &ps {
-//         expr = Expr::lambda(p.clone(), expr);
-//     }
-//     Ok(expr)
-// }
 
 pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Result<core::Lit> {
     use ast::LitKind;
@@ -812,14 +793,12 @@ pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Res
 
 pub fn lower_string_lit(ctx: &mut Context, s: impl AsRef<str>) -> diag::Result<core::Expr> {
     use core::{Expr, Lit};
-    let nil_id = expect_var(ctx, "Nil")?;
-    let cons_id = expect_var(ctx, "Cons")?;
+    let nil = Expr::Var(expect_var(ctx, "Nil")?);
+    let cons = Expr::Var(expect_var(ctx, "Cons")?);
 
-    let mut expr = Expr::Var(nil_id);
-    for p in s.as_ref().chars().rev() {
-        let c = Expr::Lit(Lit::Char(p));
-        let e = Expr::Apply(Expr::Var(cons_id).into(), c.into());
-        expr = Expr::Apply(e.into(), expr.into());
+    let mut expr = nil;
+    for c in s.as_ref().chars().rev().map(|c| Lit::Char(c)) {
+        expr = Expr::apply_n(cons.clone(), vec![Expr::Lit(c), expr]);
     }
     Ok(expr)
 }
