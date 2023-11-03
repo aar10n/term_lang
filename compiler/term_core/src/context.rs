@@ -1,37 +1,11 @@
 use crate::core::*;
-use term_common::{declare_id_collection, declare_union_id, source::SourceMap, span::Spanned};
+use term_common::{source::SourceMap, span::Spanned};
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
-
-declare_id_collection! {
-    pub Ids {
-        ClassId,
-        DataId,
-        DataConId(DataId),
-        EffectId,
-        EffectOpId(EffectId),
-        DeclId,
-        HandlerId,
-        InstId,
-        MonoVarId,
-        PolyVarId,
-        VarId,
-    }
-}
-
-declare_union_id! {
-    ParentId {
-        Class(ClassId),
-        Data(DataId),
-        Effect(EffectId),
-        Handler(HandlerId),
-        Inst(InstId),
-    }
-}
 
 #[derive(Debug)]
 pub struct Context {
@@ -44,15 +18,12 @@ pub struct Context {
     pub global_types: UstrMap<Id>,
     pub name_scopes: BTreeMap<ParentId, NameScope>,
 
-    pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
-    pub datas: BTreeMap<DataId, Rc<RefCell<Data>>>,
-    pub defs: BTreeMap<VarId, Rc<RefCell<Def>>>,
-    pub effects: BTreeMap<EffectId, Rc<RefCell<Effect>>>,
-    pub handlers: BTreeMap<HandlerId, Rc<RefCell<Handler>>>,
-    pub insts: BTreeMap<InstId, Rc<RefCell<Inst>>>,
-
     pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
     pub typings: HashMap<Expr, TyE>,
+
+    pub defs: BTreeMap<VarId, Rc<RefCell<Def>>>,
+    pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
+    pub effects: BTreeMap<EffectId, Rc<RefCell<Effect>>>,
 }
 
 impl Context {
@@ -66,15 +37,12 @@ impl Context {
             global_names: UstrMap::default(),
             global_types: UstrMap::default(),
             name_scopes: BTreeMap::default(),
-
-            classes: BTreeMap::default(),
-            datas: BTreeMap::default(),
-            defs: BTreeMap::default(),
-            effects: BTreeMap::default(),
-            handlers: BTreeMap::default(),
-            insts: BTreeMap::default(),
-
             dep_graph: BTreeMap::default(),
+
+            defs: BTreeMap::default(),
+            classes: BTreeMap::default(),
+            effects: BTreeMap::default(),
+
             typings: HashMap::default(),
         }
     }
@@ -171,7 +139,7 @@ impl Context {
             return Err((span, *existing_id));
         }
 
-        self.id_names.insert(id, (name, span));
+        self.id_names.insert(id.into(), (name, span));
         self.name_scopes
             .entry(parent_id)
             .or_insert_with(|| NameScope::new(parent_id.into()))

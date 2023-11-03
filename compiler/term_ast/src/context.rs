@@ -4,7 +4,7 @@ use term_core as core;
 
 use ast::{EffectDecl, Expr, Ty, VarDecl};
 use common::declare_union_id;
-use core::{DataConId, DeclId, EffectId, EffectOpId, HandlerId, Id, Span, VarId};
+use core::{DataConId, DeclId, EffectId, EffectOpId, HandlerId, Id, InstId, Span, VarId};
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -17,10 +17,7 @@ use ustr::{Ustr, UstrMap, UstrSet};
 pub struct Context {
     pub ambiguous_names: UstrSet,
     pub decls: BTreeMap<DeclId, Rc<RefCell<VarDecl>>>,
-    pub con_var_ids: BTreeMap<DataConId, VarId>,
-    pub decl_var_ids: BTreeMap<DeclId, VarId>,
-    pub op_var_ids: BTreeMap<EffectOpId, VarId>,
-    pub handler_var_ids: BTreeMap<HandlerId, VarId>,
+    pub id_var_ids: BTreeMap<Id, VarId>,
     pub var_decl_ids: BTreeMap<VarId, DeclId>,
 }
 
@@ -30,10 +27,7 @@ impl Context {
             decls: BTreeMap::default(),
 
             ambiguous_names: UstrSet::default(),
-            con_var_ids: BTreeMap::default(),
-            decl_var_ids: BTreeMap::default(),
-            op_var_ids: BTreeMap::default(),
-            handler_var_ids: BTreeMap::default(),
+            id_var_ids: BTreeMap::default(),
             var_decl_ids: BTreeMap::default(),
         }
     }

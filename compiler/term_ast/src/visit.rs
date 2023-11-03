@@ -34,24 +34,7 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     fn visit_ef(&mut self, ef: &mut Ef) -> Result<S, E> {
         ef.walk(self)
     }
-    fn visit_data_decl(&mut self, data: &mut DataDecl) -> Result<S, E> {
-        data.walk(self)
-    }
-    fn visit_data_con(&mut self, con: &mut DataConDecl) -> Result<S, E> {
-        con.walk(self)
-    }
-    fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> Result<S, E> {
-        effect.walk(self)
-    }
-    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> Result<S, E> {
-        op.walk(self)
-    }
-    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> Result<S, E> {
-        handler.walk(self)
-    }
-    fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> Result<S, E> {
-        op.walk(self)
-    }
+
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> Result<S, E> {
         class.walk(self)
     }
@@ -69,6 +52,24 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     }
     fn visit_method_impl(&mut self, method: &mut MethodImpl) -> Result<S, E> {
         method.walk(self)
+    }
+    fn visit_data_decl(&mut self, data: &mut DataDecl) -> Result<S, E> {
+        data.walk(self)
+    }
+    fn visit_data_con(&mut self, con: &mut DataConDecl) -> Result<S, E> {
+        con.walk(self)
+    }
+    fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> Result<S, E> {
+        effect.walk(self)
+    }
+    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> Result<S, E> {
+        op.walk(self)
+    }
+    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> Result<S, E> {
+        handler.walk(self)
+    }
+    fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> Result<S, E> {
+        op.walk(self)
     }
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> Result<S, E> {
         var.walk(self)
@@ -309,6 +310,88 @@ impl Visit for Ef {
     }
 }
 
+impl Visit for ClassDecl {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_class_decl(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_class_ident(&mut self.name)?;
+        scoped! {visitor,
+            self.ty_params.visit(visitor)?;
+            self.members.visit(visitor)
+        }
+    }
+}
+
+impl Visit for MemberDecl {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_member_decl(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        match &mut self.kind {
+            MemberDeclKind::AssocTy(ident) => todo!(),
+            MemberDeclKind::Method(method) => method.visit(visitor),
+        }
+    }
+}
+
+impl Visit for MethodDecl {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_method_decl(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_var_ident(&mut self.name)?;
+        scoped! {visitor,
+            self.ty_params.visit(visitor)?;
+            self.ty.visit(visitor)
+        }
+    }
+}
+
+impl Visit for ClassInst {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_class_inst(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_class_ident(&mut self.class)?;
+        scoped! {visitor,
+            self.ty_args.visit(visitor)?;
+            self.members.visit(visitor)
+        }
+    }
+}
+
+impl Visit for MemberImpl {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_member_impl(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        match &mut self.kind {
+            MemberImplKind::AssocTy(..) => todo!(),
+            MemberImplKind::Method(method) => method.visit(visitor),
+        }
+    }
+}
+
+impl Visit for MethodImpl {
+    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_method_impl(self)
+    }
+
+    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
+        visitor.visit_var_ident(&mut self.name)?;
+        scoped! {visitor,
+            self.params.visit(visitor)?;
+            self.expr.visit(visitor)
+        }
+    }
+}
+
 impl Visit for DataDecl {
     fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         visitor.visit_data_decl(self)
@@ -386,88 +469,6 @@ impl Visit for EffectOpImpl {
 
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         visitor.visit_var_ident(&mut self.name);
-        scoped! {visitor,
-            self.params.visit(visitor)?;
-            self.expr.visit(visitor)
-        }
-    }
-}
-
-impl Visit for ClassDecl {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_class_decl(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_class_ident(&mut self.name)?;
-        scoped! {visitor,
-            self.ty_params.visit(visitor)?;
-            self.members.visit(visitor)
-        }
-    }
-}
-
-impl Visit for MemberDecl {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_member_decl(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        match &mut self.kind {
-            MemberDeclKind::AssocTy(ident) => todo!(),
-            MemberDeclKind::Method(method) => method.visit(visitor),
-        }
-    }
-}
-
-impl Visit for MethodDecl {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_method_decl(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_var_ident(&mut self.name)?;
-        scoped! {visitor,
-            self.ty_params.visit(visitor)?;
-            self.ty.visit(visitor)
-        }
-    }
-}
-
-impl Visit for ClassInst {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_class_inst(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_class_ident(&mut self.class)?;
-        scoped! {visitor,
-            self.ty_args.visit(visitor)?;
-            self.members.visit(visitor)
-        }
-    }
-}
-
-impl Visit for MemberImpl {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_member_impl(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        match &mut self.kind {
-            MemberImplKind::AssocTy(..) => todo!(),
-            MemberImplKind::Method(method) => method.visit(visitor),
-        }
-    }
-}
-
-impl Visit for MethodImpl {
-    fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_method_impl(self)
-    }
-
-    fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
-        visitor.visit_var_ident(&mut self.name)?;
         scoped! {visitor,
             self.params.visit(visitor)?;
             self.expr.visit(visitor)

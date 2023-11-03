@@ -49,13 +49,31 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         self.ast
     }
 
-    //
-    // Decls
-    //
+    fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
+        let class = class.lower_ast_core(self.ast, self.core)?;
+        for name in class.decls.keys() {
+            self.ast.ambiguous_names.insert(name.clone());
+        }
+
+        self.core
+            .classes
+            .insert(class.id, RefCell::new(class).into());
+        Ok(())
+    }
+
+    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
+        let (class_id, inst_def, defs) = inst.lower_ast_core(self.ast, self.core)?;
+
+        let class = self.core.classes[&class_id].clone();
+        class.borrow_mut().insts.push(inst_def.id);
+
+        self.register_def(inst_def);
+        self.register_defs(defs);
+        Ok(())
+    }
 
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
-        let (data, defs) = data.lower_ast_core(self.ast, self.core)?;
-        self.core.datas.insert(data.id, RefCell::new(data).into());
+        let defs = data.lower_ast_core(self.ast, self.core)?;
         self.register_defs(defs);
         Ok(())
     }
@@ -70,15 +88,17 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         Ok(())
     }
 
-    fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
-        let (class, names) = class.lower_ast_core(self.ast, self.core)?;
-        self.core
-            .classes
-            .insert(class.id, RefCell::new(class).into());
-
-        for name in names {
-            self.ast.ambiguous_names.insert(name);
+    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
+        let is_default = handler.default;
+        let (effect_id, han_def, defs) = handler.lower_ast_core(self.ast, self.core)?;
+        if is_default {
+            let effect = self.core.effects.get(&effect_id).cloned().unwrap();
+            let mut effect = effect.borrow_mut();
+            effect.default = Some(han_def.id);
         }
+
+        self.register_def(han_def);
+        self.register_defs(defs);
         Ok(())
     }
 
@@ -88,41 +108,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         }
         Ok(())
     }
-
-    //
-    // Impls
-    //
-
-    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let is_default = handler.default;
-        let (handler, defs) = handler.lower_ast_core(self.ast, self.core)?;
-        if is_default {
-            let effect = self.core.effects.get(&handler.effect_id).cloned().unwrap();
-            let mut effect = effect.borrow_mut();
-            let var_id = self.ast.handler_var_ids[&handler.id];
-            effect.default = Some(var_id);
-        }
-
-        self.core
-            .handlers
-            .insert(handler.id, RefCell::new(handler).into());
-
-        for def in defs {
-            self.register_def(def);
-        }
-        Ok(())
-    }
-
-    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let (inst, defs) = inst.lower_ast_core(self.ast, self.core)?;
-        self.core.insts.insert(inst.id, RefCell::new(inst).into());
-        self.register_defs(defs);
-        Ok(())
-    }
-
-    //
-    // Exprs
-    //
 
     fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
         let id = func.name.id.unwrap().var_id();

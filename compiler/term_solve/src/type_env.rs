@@ -70,6 +70,10 @@ impl TypeEnv {
         map.extend(typings);
         Self { stack: vec![map] }
     }
+
+    pub fn into_typings(self) -> impl Iterator<Item = (Expr, TyE)> {
+        self.stack.into_iter().flatten()
+    }
 }
 
 impl<I> From<I> for TypeEnv

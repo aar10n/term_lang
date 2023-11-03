@@ -113,6 +113,130 @@ impl EfKind {
     }
 }
 
+/// A type class declaration.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClassDecl {
+    /// Class name.
+    pub name: Ident,
+    /// Type parameters.
+    pub ty_params: TyParams,
+    /// Class members.
+    pub members: Vec<MemberDecl>,
+    /// Class span.
+    span: Span,
+}
+
+impl ClassDecl {
+    pub fn new(name: Ident, ty_params: TyParams, members: Vec<MemberDecl>) -> Self {
+        Self {
+            name,
+            ty_params,
+            members,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A class member declaration.
+pub type MemberDecl = Node<MemberDeclKind>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MemberDeclKind {
+    /// An associated type.
+    AssocTy(Ident),
+    /// A method declaration.
+    Method(MethodDecl),
+}
+
+/// A type class method declaration.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MethodDecl {
+    /// Method name.
+    pub name: Ident,
+    /// Type parameters.
+    pub ty_params: TyParams,
+    /// Function type.
+    pub ty: P<Ty>,
+    /// Instance span.
+    span: Span,
+}
+
+impl MethodDecl {
+    pub fn new(name: Ident, ty_params: TyParams, ty: P<Ty>) -> Self {
+        Self {
+            name,
+            ty_params,
+            ty,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A type class instance.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClassInst {
+    /// Instance id.
+    pub inst_id: Option<InstId>,
+    /// Type class.
+    pub class: Ident,
+    /// Type arguments.
+    pub ty_args: TyArgs,
+    /// Instance members.
+    pub members: Vec<MemberImpl>,
+    /// Instance span.
+    span: Span,
+}
+
+impl ClassInst {
+    pub fn new(class: Ident, ty_args: TyArgs, members: Vec<MemberImpl>) -> Self {
+        Self {
+            inst_id: None,
+            class,
+            ty_args,
+            members,
+            span: Span::default(),
+        }
+    }
+}
+
+/// A type class member implementation.
+pub type MemberImpl = Node<MemberImplKind>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum MemberImplKind {
+    /// Associated type definition.
+    AssocTy(Ident, P<Ty>),
+    /// A method implementation.
+    Method(MethodImpl),
+}
+
+/// A type class method implementation.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MethodImpl {
+    /// Function name.
+    pub name: Ident,
+    /// Resolved class method decl id.
+    pub method_id: Option<DeclId>,
+    /// Function parameters.
+    pub params: Vec<P<Pat>>,
+    /// Impl expression.
+    pub expr: P<Expr>,
+    /// Instance span.
+    span: Span,
+}
+
+impl MethodImpl {
+    pub fn new(name: Ident, params: Vec<P<Pat>>, expr: P<Expr>) -> Self {
+        Self {
+            name,
+            method_id: None,
+            params,
+            expr,
+            span: Span::default(),
+        }
+    }
+}
+
 /// A data type declaration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataDecl {
@@ -137,6 +261,7 @@ impl DataDecl {
     }
 }
 
+/// A data constructor declaration.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DataConDecl {
     /// Constructor name.
@@ -266,130 +391,6 @@ impl EffectOpImpl {
         Self {
             op_id: None,
             name,
-            params,
-            expr,
-            span: Span::default(),
-        }
-    }
-}
-
-/// A type class declaration.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ClassDecl {
-    /// Class name.
-    pub name: Ident,
-    /// Type parameters.
-    pub ty_params: TyParams,
-    /// Class members.
-    pub members: Vec<MemberDecl>,
-    /// Class span.
-    span: Span,
-}
-
-impl ClassDecl {
-    pub fn new(name: Ident, ty_params: TyParams, members: Vec<MemberDecl>) -> Self {
-        Self {
-            name,
-            ty_params,
-            members,
-            span: Span::default(),
-        }
-    }
-}
-
-/// A class member declaration.
-pub type MemberDecl = Node<MemberDeclKind>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum MemberDeclKind {
-    /// An associated type.
-    AssocTy(Ident),
-    /// A method declaration.
-    Method(MethodDecl),
-}
-
-/// A type class method declaration.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MethodDecl {
-    /// Method name.
-    pub name: Ident,
-    /// Type parameters.
-    pub ty_params: TyParams,
-    /// Function type.
-    pub ty: P<Ty>,
-    /// Instance span.
-    span: Span,
-}
-
-impl MethodDecl {
-    pub fn new(name: Ident, ty_params: TyParams, ty: P<Ty>) -> Self {
-        Self {
-            name,
-            ty_params,
-            ty,
-            span: Span::default(),
-        }
-    }
-}
-
-/// A type class instance.
-#[derive(Clone, Debug, PartialEq)]
-pub struct ClassInst {
-    /// Associated inst id.
-    pub id: Option<InstId>,
-    /// Type class.
-    pub class: Ident,
-    /// Type arguments.
-    pub ty_args: TyArgs,
-    /// Instance members.
-    pub members: Vec<MemberImpl>,
-    /// Instance span.
-    span: Span,
-}
-
-impl ClassInst {
-    pub fn new(class: Ident, ty_args: TyArgs, members: Vec<MemberImpl>) -> Self {
-        Self {
-            id: None,
-            class,
-            ty_args,
-            members,
-            span: Span::default(),
-        }
-    }
-}
-
-/// A type class member implementation.
-pub type MemberImpl = Node<MemberImplKind>;
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum MemberImplKind {
-    /// Associated type definition.
-    AssocTy(Ident, P<Ty>),
-    /// A method implementation.
-    Method(MethodImpl),
-}
-
-/// A type class method implementation.
-#[derive(Clone, Debug, PartialEq)]
-pub struct MethodImpl {
-    /// Function name.
-    pub name: Ident,
-    /// Resolved class method decl id.
-    pub method_id: Option<DeclId>,
-    /// Function parameters.
-    pub params: Vec<P<Pat>>,
-    /// Impl expression.
-    pub expr: P<Expr>,
-    /// Instance span.
-    span: Span,
-}
-
-impl MethodImpl {
-    pub fn new(name: Ident, params: Vec<P<Pat>>, expr: P<Expr>) -> Self {
-        Self {
-            name,
-            method_id: None,
             params,
             expr,
             span: Span::default(),

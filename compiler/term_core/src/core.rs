@@ -1,13 +1,16 @@
-use term_common::{declare_child_id, declare_id, declare_union_id};
+use term_common::{declare_child_id, declare_id, declare_id_collection, declare_union_id};
 pub use term_common::{span::Span, P};
 
 use either::*;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::ops::BitOr;
+use std::hash::Hash;
+use std::ops::{BitOr, Deref};
 use ustr::Ustr;
 
 /// A type class id.
 declare_id!(ClassId);
+/// A declaration id.
+declare_id!(DeclId);
 /// A data type id.
 declare_id!(DataId);
 /// A data constructor id.
@@ -16,11 +19,9 @@ declare_child_id!(DataConId, DataId);
 declare_id!(EffectId);
 /// An effect operation id.
 declare_child_id!(EffectOpId, EffectId);
-/// A declaration id.
-declare_id!(DeclId);
-/// An effect handler id.
+/// Effect handler id.
 declare_id!(HandlerId);
-/// A class instance id.
+/// Class instance id.
 declare_id!(InstId);
 /// A poly type variable id.
 declare_id!(PolyVarId);
@@ -32,17 +33,43 @@ declare_id!(VarId);
 /// Top level id.
 declare_union_id!(Id {
     Class(ClassId),
+    Decl(DeclId),
     Data(DataId),
     DataCon(DataConId),
     Effect(EffectId),
     EffectOp(EffectOpId),
-    Decl(DeclId),
     Handler(HandlerId),
     Inst(InstId),
     MonoVar(MonoVarId),
     PolyVar(PolyVarId),
     Var(VarId),
 });
+
+declare_id_collection! {
+    pub Ids {
+        ClassId,
+        DeclId,
+        DataId,
+        DataConId(DataId),
+        EffectId,
+        EffectOpId(EffectId),
+        HandlerId,
+        InstId,
+        MonoVarId,
+        PolyVarId,
+        VarId,
+    }
+}
+
+declare_union_id! {
+    ParentId {
+        Class(ClassId),
+        Data(DataId),
+        Effect(EffectId),
+        Handler(HandlerId),
+        Inst(InstId),
+    }
+}
 
 /// A type + effect + constraints.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -53,6 +80,9 @@ pub struct TyE {
 }
 
 impl TyE {
+    // Constructors
+    //
+
     pub fn new(ty: Ty, ef: Ef, cs: Vec<Constraint>) -> Self {
         Self { ty, ef, cs }
     }
@@ -95,6 +125,22 @@ impl TyE {
         }
     }
 
+    pub fn record(fs: impl IntoIterator<Item = (Ustr, TyE)>) -> Self {
+        let fs = fs.into_iter().collect::<BTreeMap<_, _>>();
+        Self::new(Ty::Record(fs.clone()), Ef::Pure, vec![])
+    }
+
+    // Predicates
+    //
+
+    pub fn is_monomorphic(&self) -> bool {
+        self.ty.is_monomorphic() && self.ef.is_monomorphic()
+    }
+
+    pub fn is_polymorphic(&self) -> bool {
+        !self.is_monomorphic()
+    }
+
     pub fn is_concrete(&self) -> bool {
         self.ty.is_concrete() && self.ef.is_concrete()
     }
@@ -103,9 +149,15 @@ impl TyE {
         !self.ef.is_pure()
     }
 
-    pub fn return_ty(&self) -> Option<&TyE> {
+    // Accessors
+    //
+
+    pub fn ret_ty(&self) -> Option<&TyE> {
         self.ty.return_ty()
     }
+
+    // Modifiers
+    //
 
     pub fn with_ef(self, ef: Ef) -> Self {
         Self::new(self.ty, self.ef | ef, self.cs)
@@ -117,12 +169,20 @@ impl TyE {
         Self::new(self.ty, self.ef, cs)
     }
 
+    pub fn split_ef(self) -> (TyE, Ef) {
+        (TyE::new(self.ty, Ef::Pure, self.cs), self.ef)
+    }
+
     pub fn into_tuple(self) -> (Ty, Ef, Vec<Constraint>) {
         (self.ty, self.ef, self.cs)
     }
+}
 
-    pub fn split_ef(self) -> (TyE, Ef) {
-        (TyE::new(self.ty, Ef::Pure, self.cs), self.ef)
+impl Deref for TyE {
+    type Target = Ty;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ty
     }
 }
 
@@ -176,8 +236,27 @@ impl Ty {
         }
     }
 
+    pub fn record(fs: impl IntoIterator<Item = (Ustr, TyE)>) -> Self {
+        Self::Record(fs.into_iter().collect())
+    }
+
     // Predicates
     //
+
+    pub fn is_mono(&self) -> bool {
+        matches!(self, Self::Mono(_))
+    }
+
+    pub fn is_monomorphic(&self) -> bool {
+        match self {
+            Self::Infer | Self::Poly(_) => false,
+            Self::Data(_, ts) => ts.iter().all(|t| t.is_monomorphic()),
+            Self::Func(box a, box b) => a.is_monomorphic() && b.is_monomorphic(),
+            Self::Record(fs) => fs.values().all(|t| t.is_monomorphic()),
+            Self::Effectful(box t, _) => t.is_monomorphic(),
+            _ => true,
+        }
+    }
 
     pub fn is_concrete(&self) -> bool {
         match self {
@@ -235,8 +314,28 @@ pub enum Ef {
 }
 
 impl Ef {
+    pub fn union(fs: impl IntoIterator<Item = Ef>) -> Self {
+        let fs = fs.into_iter().collect::<Vec<_>>();
+        if fs.is_empty() {
+            Self::Pure
+        } else if fs.len() == 1 {
+            fs.into_iter().next().unwrap()
+        } else {
+            Self::Union(fs.into_iter().collect())
+        }
+    }
+
     pub fn is_pure(&self) -> bool {
         matches!(self, Self::Pure)
+    }
+
+    pub fn is_monomorphic(&self) -> bool {
+        match self {
+            Self::Infer | Self::Poly(_) => false,
+            Self::Effect(_, ts) => ts.iter().all(|t| t.is_monomorphic()),
+            Self::Union(fs) => fs.iter().all(|f| f.is_monomorphic()),
+            _ => true,
+        }
     }
 
     pub fn is_concrete(&self) -> bool {
@@ -299,7 +398,7 @@ pub enum Constraint {
 //
 
 /// An generalized expression.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     /// Type.
     Type(P<TyE>),
@@ -339,6 +438,10 @@ impl Expr {
         Self::Lit(Lit::Unit)
     }
 
+    pub fn ty(t: TyE) -> Self {
+        Self::Type(t.into())
+    }
+
     pub fn apply(a: Expr, b: Expr) -> Self {
         Self::Apply(a.into(), b.into())
     }
@@ -357,6 +460,10 @@ impl Expr {
         let ps = ps.into_iter().collect::<Vec<_>>();
         assert!(!ps.is_empty());
         ps.into_iter().rev().fold(b, |a, b| Self::lambda(b, a))
+    }
+
+    pub fn record(fs: impl IntoIterator<Item = (Ustr, Expr)>) -> Self {
+        Self::Record(fs.into_iter().collect())
     }
 
     // Predicates
@@ -399,7 +506,7 @@ impl Expr {
         }
     }
 
-    // Transformations
+    // Modifiers
     //
 
     pub fn with_span(self, span: Span) -> Self {
@@ -436,7 +543,6 @@ impl Expr {
             f = a;
             es.push(b);
         }
-        es.reverse();
         (f, es)
     }
 
@@ -457,6 +563,70 @@ impl Expr {
         }
         ps.reverse();
         (ps, e)
+    }
+}
+
+impl Hash for Expr {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Self::Type(t) => {
+                state.write_u8(0);
+                t.hash(state);
+            }
+            Self::Lit(l) => {
+                state.write_u8(1);
+                l.hash(state);
+            }
+            Self::Sym(s) => {
+                state.write_u8(2);
+                s.hash(state);
+            }
+            Self::Var(v) => {
+                state.write_u8(3);
+                v.hash(state);
+            }
+            Self::Apply(a, b) => {
+                state.write_u8(4);
+                a.hash(state);
+                b.hash(state);
+            }
+            Self::Lambda(a, b) => {
+                state.write_u8(5);
+                a.hash(state);
+                b.hash(state);
+            }
+            Self::Case(a, bs) => {
+                state.write_u8(6);
+                a.hash(state);
+                bs.hash(state);
+            }
+            Self::Handle(a, bs) => {
+                state.write_u8(7);
+                a.hash(state);
+                bs.hash(state);
+            }
+            Self::Do(es) => {
+                state.write_u8(8);
+                es.hash(state);
+            }
+            Self::Let(bs, b) => {
+                state.write_u8(9);
+                bs.hash(state);
+                b.hash(state);
+            }
+            Self::Record(fs) => {
+                state.write_u8(10);
+                fs.hash(state);
+            }
+            Self::RecSel(a, b) => {
+                state.write_u8(11);
+                a.hash(state);
+                b.hash(state);
+            }
+            Self::Span(_, e) => {
+                e.hash(state);
+            }
+        }
     }
 }
 
@@ -506,10 +676,34 @@ impl Lit {
 //
 //
 
+/// A type class.
+#[derive(Clone, Debug)]
+pub struct Class {
+    /// Class id.
+    pub id: ClassId,
+    /// Class constraints.
+    pub cs: Vec<Constraint>,
+    /// Class declarations.
+    pub decls: BTreeMap<Ustr, TyE>,
+    /// Class instances.
+    pub insts: Vec<VarId>,
+}
+
+impl Class {
+    pub fn new(id: ClassId, cs: Vec<Constraint>, decls: BTreeMap<Ustr, TyE>) -> Self {
+        Self {
+            id,
+            cs,
+            decls,
+            insts: vec![],
+        }
+    }
+}
+
 /// A definition.
 #[derive(Clone, Debug)]
 pub struct Def {
-    /// The variable id.
+    /// Variable id.
     pub id: VarId,
     /// Variable type.
     pub ty: TyE,
@@ -539,108 +733,32 @@ impl Def {
     }
 }
 
-/// A data type.
-#[derive(Clone, Debug)]
-pub struct Data {
-    /// The data type id.
-    pub id: DataId,
-    /// Data type parameters.
-    pub params: Vec<PolyVarId>,
-    /// Constraints
-    pub constraints: Vec<Constraint>,
-    /// Data type constructors.
-    pub cons: Vec<DataCon>,
-}
-
-/// A data constructor.
-#[derive(Clone, Debug)]
-pub struct DataCon {
-    /// The data constructor id.
-    pub id: DataConId,
-    /// The constructor function var id.
-    pub var_id: VarId,
-    /// Data constructor fields.
-    pub fields: Vec<TyE>,
-}
-
 /// An effect type.
 #[derive(Clone, Debug)]
 pub struct Effect {
-    /// The effect type id.
+    /// Effect id.
     pub id: EffectId,
-    /// Effect type parameters.
-    pub params: Vec<PolyVarId>,
-    /// Constraints
-    pub constraints: Vec<Constraint>,
-    /// Combining effects
-    pub combining_efs: Vec<Ef>,
-    /// Effect type operations.
-    pub ops: Vec<EffectOp>,
-    /// Type of a handler for this effect.
+    /// Side effects.
+    pub side_efs: Vec<Ef>,
+    /// Effect operations.
+    pub ops: BTreeMap<Ustr, TyE>,
+    /// Effect handler type.
     pub handler_ty: TyE,
     /// Effect handlers.
-    pub handlers: Vec<HandlerId>,
+    pub handlers: Vec<VarId>,
     /// Default handler.
     pub default: Option<VarId>,
 }
 
-/// An effect operation.
-#[derive(Clone, Debug)]
-pub struct EffectOp {
-    /// The operation id.
-    pub id: EffectOpId,
-    /// Effect operation type.
-    pub ty: TyE,
-}
-
-/// An effect handler.
-#[derive(Clone, Debug)]
-pub struct Handler {
-    /// The effect id.
-    pub effect_id: EffectId,
-    /// The handler id.
-    pub id: HandlerId,
-    /// Type parameters.
-    pub params: Vec<TyE>,
-    /// Constraints.
-    pub constraints: Vec<Constraint>,
-    /// Handler operations.
-    pub ops: BTreeMap<EffectOpId, VarId>,
-}
-
-/// A type class.
-#[derive(Clone, Debug)]
-pub struct Class {
-    /// The class id.
-    pub id: ClassId,
-    /// Class type parameters.
-    pub params: Vec<PolyVarId>,
-    /// Constraints.
-    pub constraints: Vec<Constraint>,
-    /// Class methods.
-    pub methods: Vec<Method>,
-    /// Instances of class.
-    pub insts: Vec<InstId>,
-}
-
-/// A type class method.
-#[derive(Clone, Debug)]
-pub struct Method {
-    /// The method id.
-    pub id: DeclId,
-    /// Method type.
-    pub ty: TyE,
-}
-
-/// A type class instance.
-#[derive(Clone, Debug)]
-pub struct Inst {
-    /// The instance id.
-    pub id: InstId,
-    /// Type parameters.
-    pub params: Vec<TyE>,
-    /// Constraints.
-    pub constraints: Vec<Constraint>,
-    /// Instance methods.
-    pub methods: Vec<VarId>,
+impl Effect {
+    pub fn new(id: EffectId, side_efs: Vec<Ef>, ops: BTreeMap<Ustr, TyE>, handler_ty: TyE) -> Self {
+        Self {
+            id,
+            side_efs,
+            ops,
+            handler_ty,
+            handlers: vec![],
+            default: None,
+        }
+    }
 }

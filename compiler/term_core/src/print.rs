@@ -15,7 +15,7 @@ use term_print::{
 };
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{fs::write, io};
 use ustr::Ustr;
 
@@ -186,9 +186,9 @@ impl PrettyPrint<Context> for Expr {
                 Ok(())
             }
             Expr::Handle(e, Some(alts)) => {
-                write!(out, "{KEYWORD}handle{RESET} ")?;
-                write_indented(out, ctx, e, level, false)?;
-                writeln!(out, "{KEYWORD}with{RESET}")?;
+                writeln!(out, "{KEYWORD}handle{RESET}")?;
+                write_indented(out, ctx, e, level + 1, false)?;
+                writeln!(out, "{tab}{KEYWORD}with{RESET}")?;
                 write_indented(
                     out,
                     ctx,
@@ -202,7 +202,8 @@ impl PrettyPrint<Context> for Expr {
             Expr::Do(es) => {
                 writeln!(out, "{KEYWORD}do{RESET}")?;
                 for e in es {
-                    write_indented(out, ctx, e, level + 1, true);
+                    e.pretty_print(out, ctx, level + 1)?;
+                    writeln!(out)?;
                 }
                 Ok(())
             }
@@ -364,7 +365,7 @@ impl PrettyPrint<Context> for Def {
     }
 }
 
-impl PrettyPrint<Context> for Data {
+impl PrettyPrint<Context> for HashMap<Expr, TyE> {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
@@ -372,203 +373,15 @@ impl PrettyPrint<Context> for Data {
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}Data{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        if !self.params.is_empty() {
-            write!(out, "{ttab}{ATTR}params:{RESET} ")?;
-            write_list(out, ctx, ", ", &self.params)?;
-            writeln!(out)?;
-        }
-        if !self.constraints.is_empty() {
-            write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
-            write_list(out, ctx, ", ", &self.constraints)?;
-            writeln!(out)?;
-        }
-        writeln!(out, "{ttab}{ATTR}cons:{RESET}")?;
-        write_bulleted(out, ctx, &self.cons, level + 2)
-    }
-}
-
-impl PrettyPrint<Context> for DataCon {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}DataCon{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        if !self.fields.is_empty() {
-            write!(out, "{ttab}{ATTR}fields:{RESET} ")?;
-            write_list(out, ctx, ", ", &self.fields)?;
-            writeln!(out)?;
-        }
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for Effect {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        let ttab = format!("{tab}{TABWIDTH}");
-        writeln!(out, "{tab}{TAG}Effect{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", self.id.pretty_string(ctx))?;
-        if !self.params.is_empty() {
-            write!(out, "{ttab}{ATTR}params:{RESET} ")?;
-            write_list(out, ctx, " ", &self.params)?;
-            writeln!(out)?;
-        }
-        if !self.constraints.is_empty() {
-            write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
-            write_list(out, ctx, ", ", &self.constraints)?;
-            writeln!(out)?;
-        }
-        if !self.combining_efs.is_empty() {
-            write!(out, "{ttab}{ATTR}combining:{RESET} ")?;
-            write_list(out, ctx, ", ", &self.combining_efs)?;
-            writeln!(out)?;
-        }
-        writeln!(out, "{ttab}{ATTR}ops:{RESET}")?;
-        write_bulleted(out, ctx, &self.ops, level + 2)?;
-        // write!(out, "{ttab}{}", self.handler_ty.pretty_string(ctx))
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for EffectOp {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}EffectOp{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        writeln!(out, "{ttab}{ATTR}ty:{RESET} {}", self.ty.pretty_string(ctx))
-    }
-}
-
-impl PrettyPrint<Context> for Handler {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        info: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(info);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}Handler{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        writeln!(
-            out,
-            "{ttab}{ATTR}effect:{RESET} {}",
-            self.effect_id.pretty_string(ctx)
-        )?;
-        if !self.params.is_empty() {
-            write!(out, "{ttab}{ATTR}params:{RESET} ")?;
-            write_list(out, ctx, " ", &self.params)?;
-            writeln!(out)?;
-        }
-        if !self.constraints.is_empty() {
-            write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
-            write_list(out, ctx, PIPE_SEP, &self.constraints)?;
-            writeln!(out)?;
-        }
-        writeln!(out, "{ttab}{ATTR}ops:{RESET}")?;
-        for (op_id, var_id) in self.ops.iter() {
+        for (e, ty) in self {
             writeln!(
                 out,
-                "{ttab}{tab}{DELIM}-{RESET} {} {PUNCT}=>{RESET} {}",
-                Id::from(*op_id).pretty_string(ctx),
-                Id::from(*var_id).pretty_string(ctx),
+                "{tab}{} {ARROW} {}",
+                e.pretty_string(ctx),
+                ty.pretty_string(ctx)
             )?;
         }
         Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for Class {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        info: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(info);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}Class{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        if !self.params.is_empty() {
-            write!(out, "{ttab}{ATTR}params:{RESET} ")?;
-            write_list(out, ctx, " ", &self.params)?;
-            writeln!(out)?;
-        }
-        if !self.constraints.is_empty() {
-            write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
-            write_list(out, ctx, PIPE_SEP, &self.constraints)?;
-            writeln!(out)?;
-        }
-        writeln!(out, "{ttab}{ATTR}methods:{RESET}")?;
-        write_bulleted(out, ctx, &self.methods, info + 2)
-    }
-}
-
-impl PrettyPrint<Context> for Method {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        info: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(info);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        writeln!(out, "{tab}{TAG}Method{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        writeln!(out, "{ttab}{ATTR}ty:{RESET} {}", self.ty.pretty_string(ctx))
-    }
-}
-
-impl PrettyPrint<Context> for Inst {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        let ttab = format!("{tab}{TABWIDTH}");
-        let id = id_to_string(ctx, self.id, true);
-        // let methods = self.methods.values().collect::<Vec<_>>();
-        writeln!(out, "{tab}{TAG}Inst{RESET}")?;
-        writeln!(out, "{ttab}{ATTR}id:{RESET} {}", id)?;
-        if !self.params.is_empty() {
-            write!(out, "{ttab}{ATTR}params:{RESET} ")?;
-            write_list(out, ctx, " ", &self.params)?;
-            writeln!(out)?;
-        }
-        if !self.constraints.is_empty() {
-            write!(out, "{ttab}{ATTR}constraints:{RESET} ")?;
-            write_list(out, ctx, PIPE_SEP, &self.constraints)?;
-            writeln!(out)?;
-        }
-        writeln!(out, "{ttab}{ATTR}methods:{RESET}")?;
-        write_bulleted(out, ctx, &self.methods, level + 2)
     }
 }
 
@@ -594,35 +407,10 @@ impl<Ctx> PrettyPrint<Ctx> for Context {
     ) -> io::Result<()> {
         let tab = TABWIDTH;
         writeln!(out, "{:-^1$}", "", 80)?;
-        if !self.classes.is_empty() {
-            let classes = self.classes.values().collect::<Vec<_>>();
-            writeln!(out, "{TITLE}Classes{RESET}")?;
-            write_bulleted(out, self, &classes, 0)?;
-        }
-        if !self.datas.is_empty() {
-            let datatys = self.datas.values().collect::<Vec<_>>();
-            writeln!(out, "{TITLE}Data Types{RESET}")?;
-            write_bulleted(out, self, &datatys, 0)?;
-        }
-        if !self.effects.is_empty() {
-            let effects = self.effects.values().collect::<Vec<_>>();
-            writeln!(out, "{TITLE}Effects{RESET}")?;
-            write_bulleted(out, self, &effects, 0)?;
-        }
         if !self.defs.is_empty() {
             let defs = self.defs.values().collect::<Vec<_>>();
             writeln!(out, "{TITLE}Definitions{RESET}")?;
             write_bulleted(out, self, &defs, 0)?;
-        }
-        if !self.handlers.is_empty() {
-            let handlers = self.handlers.values().collect::<Vec<_>>();
-            writeln!(out, "{TITLE}Handlers{RESET}")?;
-            write_bulleted(out, self, &handlers, 0)?;
-        }
-        if !self.insts.is_empty() {
-            let insts = self.insts.values().collect::<Vec<_>>();
-            writeln!(out, "{TITLE}Instances{RESET}")?;
-            write_bulleted(out, self, &insts, 0)?;
         }
         writeln!(out, "{:-^1$}", "", 80)?;
 
@@ -648,11 +436,10 @@ macro_rules! impl_pretty_print_for_id {
 }
 
 impl_pretty_print_for_id!(ClassId);
+impl_pretty_print_for_id!(DeclId);
 impl_pretty_print_for_id!(DataId);
 impl_pretty_print_for_id!(DataConId);
 impl_pretty_print_for_id!(EffectId);
-impl_pretty_print_for_id!(DeclId);
-impl_pretty_print_for_id!(HandlerId);
 impl_pretty_print_for_id!(InstId);
 // impl_pretty_print_for_id!(MonoVarId);
 impl_pretty_print_for_id!(PolyVarId);
@@ -692,12 +479,12 @@ where
 fn id_to_color(id: Id) -> (usize, &'static str) {
     match id {
         Id::Class(id) => (id.raw, CYAN),
+        Id::Decl(id) => (id.raw, ""),
         Id::Data(id) => (id.raw, CYAN),
         Id::DataCon(id) => (id.raw, ""),
         Id::Effect(id) => (id.raw, CYAN),
         Id::EffectOp(id) => (id.raw, RED),
-        Id::Decl(id) => (id.raw, ""),
-        Id::Handler(id) => (id.raw, BLUE),
+        Id::Handler(id) => (id.raw, MAGENTA),
         Id::Inst(id) => (id.raw, BLUE),
         Id::MonoVar(id) => (id.raw, GREEN),
         Id::PolyVar(id) => (id.raw, MAGENTA),

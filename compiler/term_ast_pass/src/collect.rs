@@ -68,121 +68,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         Ok(())
     }
 
-    fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
-        let id = self.core.ids.next_data_id();
-        let name = data.name.raw;
-        let span = data.name.span();
-
-        self.core
-            .register_global_type(id, name, span)
-            .ok_or_duplicate_decl_err(&self.core, "data")?;
-
-        self.scope_id = Some(id.into());
-        data.name.id = Some(id.into());
-        data.ty_params.visit(self)?;
-        data.cons.visit(self)?;
-        self.scope_id = None;
-        Ok(())
-    }
-
-    fn visit_data_con(&mut self, con: &mut DataConDecl) -> diag::Result<()> {
-        let data_id = self.scope_id.unwrap().data_id();
-        let id = self.core.ids.next_data_con_id(data_id);
-        let name = con.name.raw;
-        let span = con.name.span();
-
-        self.core
-            .register_global_name(id, name, span)
-            .ok_or_duplicate_decl_err(&self.core, "data constructor")?;
-
-        // register and associate variable id with this constructor. the variable
-        // will become associated with a constructor function used in type checking.
-        let var_id = self.core.ids.next_var_id();
-        self.core.register_id_name(var_id, name, span);
-        self.ast.con_var_ids.insert(id, var_id);
-
-        con.name.id = Some(id.into());
-        con.fields.visit(self)
-    }
-
-    fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> diag::Result<()> {
-        let id = self.core.ids.next_effect_id();
-        let name = effect.name.raw;
-        let span = effect.name.span();
-
-        self.core
-            .register_global_type(id, name, span)
-            .ok_or_duplicate_decl_err(self.core, "effect")?;
-
-        self.scope_id = Some(id.into());
-        effect.name.id = Some(id.into());
-        effect.ty_params.visit(self)?;
-        effect.side_efs.visit(self)?;
-        effect.ops.visit(self)?;
-        self.scope_id = None;
-        Ok(())
-    }
-
-    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> diag::Result<()> {
-        let effect_id = self.scope_id.unwrap().effect_id();
-        let op_id = self.core.ids.next_effect_op_id(effect_id);
-        let name = op.name.raw;
-        let span = op.name.span();
-
-        self.core
-            .register_scoped_name(effect_id, op_id, name, span, Exclusivity::None)
-            .ok_or_duplicate_decl_err(self.core, "effect operation")?;
-
-        // register and associate variable id with this operation.
-        let var_id = self.core.ids.next_var_id();
-        self.core.register_id_name(var_id, name, span);
-        self.ast.op_var_ids.insert(op_id, var_id);
-
-        self.core
-            .register_global_name(var_id, name, span)
-            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
-
-        op.name.id = Some(op_id.into());
-        op.ty.visit(self)
-    }
-
-    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let id = self.core.ids.next_handler_id();
-        let name = handler.name.raw;
-        let span = handler.name.span();
-
-        self.core
-            .register_global_name(id, name, span)
-            .ok_or_duplicate_decl_err(&self.core, "effect handler")?;
-
-        // register variable associated with handler
-        let var_id = self.core.ids.next_var_id();
-        self.core.register_id_name(var_id, name, span);
-        self.ast.handler_var_ids.insert(id, var_id);
-
-        self.scope_id = Some(id.into());
-        handler.name.id = Some(id.into());
-        handler.ty_args.visit(self)?;
-        handler.ops.visit(self)?;
-        self.scope_id = None;
-        Ok(())
-    }
-
-    fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> diag::Result<()> {
-        let handler_id = self.scope_id.unwrap().handler_id();
-        let id = self.core.ids.next_var_id();
-        let name = op.name.raw;
-        let span = op.name.span();
-
-        self.core
-            .register_scoped_name(handler_id, id, name, span, Exclusivity::None)
-            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
-
-        op.name.id = Some(id.into());
-        op.params.visit(self)?;
-        op.expr.visit(self)
-    }
-
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
         let id = self.core.ids.next_class_id();
         let name = class.name.raw;
@@ -224,15 +109,19 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let span = inst.span();
         self.core.register_id_name(id, name, span);
 
+        let var_id = self.core.ids.next_var_id();
+        self.core.register_id_name(var_id, name, span);
+        self.ast.id_var_ids.insert(id.into(), var_id);
+
         self.scope_id = Some(id.into());
-        inst.id = Some(id.into());
+        inst.inst_id = Some(id.into());
         inst.ty_args.visit(self)?;
         inst.members.visit(self)?;
         self.scope_id = None;
         Ok(())
     }
 
-    fn visit_method_impl(&mut self, method: &mut MethodImpl) -> Result<(), Diagnostic> {
+    fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
         let inst_id = self.scope_id.unwrap().inst_id();
         let id = self.core.ids.next_var_id();
         let name = method.name.raw;
@@ -245,6 +134,120 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         method.name.id = Some(id.into());
         method.params.visit(self)?;
         method.expr.visit(self)
+    }
+
+    fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
+        let id = self.core.ids.next_data_id();
+        let name = data.name.raw;
+        let span = data.name.span();
+
+        self.core
+            .register_global_type(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "data")?;
+
+        self.scope_id = Some(id.into());
+        data.name.id = Some(id.into());
+        data.ty_params.visit(self)?;
+        data.cons.visit(self)?;
+        self.scope_id = None;
+        Ok(())
+    }
+
+    fn visit_data_con(&mut self, con: &mut DataConDecl) -> diag::Result<()> {
+        let data_id = self.scope_id.unwrap().data_id();
+        let id = self.core.ids.next_data_con_id(data_id);
+        let name = con.name.raw;
+        let span = con.name.span();
+
+        self.core
+            .register_global_name(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "data constructor")?;
+
+        let var_id = self.core.ids.next_var_id();
+        self.core.register_id_name(var_id, name, span);
+        self.ast.id_var_ids.insert(id.into(), var_id);
+
+        con.name.id = Some(id.into());
+        con.fields.visit(self)
+    }
+
+    fn visit_effect_decl(&mut self, effect: &mut EffectDecl) -> diag::Result<()> {
+        let id = self.core.ids.next_effect_id();
+        let name = effect.name.raw;
+        let span = effect.name.span();
+
+        self.core
+            .register_global_type(id, name, span)
+            .ok_or_duplicate_decl_err(self.core, "effect")?;
+
+        let var_id = self.core.ids.next_var_id();
+        self.core.register_id_name(var_id, name, span);
+        self.ast.id_var_ids.insert(id.into(), var_id);
+        effect.name.id = Some(id.into());
+
+        self.scope_id = Some(id.into());
+        effect.ty_params.visit(self)?;
+        effect.side_efs.visit(self)?;
+        effect.ops.visit(self)?;
+        self.scope_id = None;
+        Ok(())
+    }
+
+    fn visit_effect_op_decl(&mut self, op: &mut EffectOpDecl) -> diag::Result<()> {
+        let effect_id = self.scope_id.unwrap().effect_id();
+        let op_id = self.core.ids.next_effect_op_id(effect_id);
+        let name = op.name.raw;
+        let span = op.name.span();
+
+        self.core
+            .register_scoped_name(effect_id, op_id, name, span, Exclusivity::None)
+            .ok_or_duplicate_decl_err(self.core, "effect operation")?;
+
+        let var_id = self.core.ids.next_var_id();
+        self.ast.id_var_ids.insert(op_id.into(), var_id);
+
+        self.core
+            .register_global_name(var_id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
+
+        op.name.id = Some(op_id.into());
+        op.ty.visit(self)
+    }
+
+    fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
+        let id = self.core.ids.next_handler_id();
+        let name = handler.name.raw;
+        let span = handler.name.span();
+
+        self.core
+            .register_global_name(id, name, span)
+            .ok_or_duplicate_decl_err(&self.core, "effect handler")?;
+
+        let var_id = self.core.ids.next_var_id();
+        self.core.register_id_name(var_id, name, span);
+        self.ast.id_var_ids.insert(id.into(), var_id);
+
+        self.scope_id = Some(id.into());
+        handler.name.id = Some(id.into());
+        handler.ty_args.visit(self)?;
+        handler.ops.visit(self)?;
+        self.scope_id = None;
+        Ok(())
+    }
+
+    fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> diag::Result<()> {
+        let handler_id = self.scope_id.unwrap().handler_id();
+        let id = self.core.ids.next_var_id();
+        let name = op.name.raw;
+        let span = op.name.span();
+
+        self.core
+            .register_scoped_name(handler_id, id, name, span, Exclusivity::None)
+            .ok_or_duplicate_decl_err(&self.core, "effect operation")?;
+
+        op.name.id = Some(id.into());
+        op.params.visit(self)?;
+        op.expr.visit(self)
     }
 
     fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
@@ -276,7 +279,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
             // create a variable id associated with the declaration to use in resolution
             let var_id = self.core.ids.next_var_id();
             self.core.register_global_name(var_id, name, span).unwrap();
-            self.ast.decl_var_ids.insert(id, var_id);
+            self.ast.id_var_ids.insert(id.into(), var_id);
             self.ast.var_decl_ids.insert(var_id, id);
         }
 
@@ -311,7 +314,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         // check if there is a declaration
         if let Some((decl_id, span)) = self.all_decls.get(&name) {
             // check if declared variable is redefined
-            if let Some(var_id) = self.ast.decl_var_ids.insert(*decl_id, id) {
+            if let Some(var_id) = self.ast.id_var_ids.insert((*decl_id).into(), id) {
                 return DuplicateDeclErr {
                     kind: "variable",
                     span: func.name.span(),

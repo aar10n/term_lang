@@ -8,7 +8,6 @@ use core::*;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
 
-use either::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<(Expr, TyE)> {
@@ -21,7 +20,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
     let tab = TABWIDTH.repeat(level);
     let ttab = TABWIDTH.repeat(level + 1);
-
     let result = match e {
         Type(box t) => (Expr::unit(), t),
         Lit(l) => {
@@ -87,40 +85,42 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 e.pretty_string(ctx.core),
             );
 
-            let (e, t) = algorithmj(ctx, e, level + 1)?;
-            let (mut r_t, mut r_f) = t.clone().split_ef();
-
             let mut es = vec![];
             let mut ts = vec![];
+            let mut fs = BTreeSet::new();
             for e in args {
                 trace_println!(
                     ctx,
-                    "{ttab}[app] arg: {} | {}",
-                    r_t.pretty_string(ctx.core),
+                    "{ttab}[app] solving arg: {}",
                     e.pretty_string(ctx.core)
                 );
 
                 let (e, t) = algorithmj(ctx, e, level + 2)?;
-                es.push(e);
-                ts.push(t.clone());
-
+                trace_println!(ctx, "{ttab}[arg] arg done: {}", t.pretty_string(ctx.core));
                 let (t, f) = t.split_ef();
-                let v = ctx.new_ty_var();
-                r_t = unify(ctx, r_t, TyE::func(t, TyE::pure(v.clone())), level + 2)?;
-
-                r_t = update(ctx, TyE::pure(v));
-                r_f = r_f | f;
+                es.push(e);
+                ts.push(t);
+                fs.insert(f);
             }
 
-            let f_t = update(ctx, TyE::nary_func(ts, r_t.clone()).with_ef(r_f.clone()));
-            trace_println!(
-                ctx,
-                "{tab}[app] type of {} is {}",
-                e.pretty_string(ctx.core),
-                f_t.pretty_string(ctx.core)
-            );
+            let res_t = TyE::pure(ctx.new_ty_var());
+            let f_t = TyE::nary_func(ts, res_t.clone());
 
-            let res_t = update(ctx, r_t.with_ef(r_f));
+            // this is the point where we resolve ambiguous symbols to a concrete
+            // implementation based on the arguments.
+            let e = if e.is_sym() && let Sym(s) = e.clone().unwrap_inner() {
+                println!("{} | {}", s, f_t.pretty_string(ctx.core));
+                panic!();
+            } else {
+                e
+            };
+
+            let (e, t) = algorithmj(ctx, e, level + 1)?;
+            let (t, f) = t.split_ef();
+            fs.insert(f);
+
+            let f_t = unify(ctx, f_t, t, level + 1)?;
+            let res_t = update(ctx, res_t.with_ef(Ef::from(fs)));
             let res_e = Expr::apply_n(e, es);
             trace_println!(ctx, "{tab}[app] done: {}", res_t.pretty_string(ctx.core));
             (res_e, res_t)
@@ -162,7 +162,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
 
             let mut new_alts = vec![];
             let mut res_t = TyE::pure(Ty::Infer);
-            let mut res_f = Ef::Infer;
+            let mut fs = BTreeSet::new();
             for (p, e) in alts.into_iter() {
                 trace_println!(
                     ctx,
@@ -170,26 +170,34 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                     p.pretty_string(ctx.core),
                     e.pretty_string(ctx.core)
                 );
-
                 let (p_t, vars) = solve_pat(ctx, &p, level + 2)?;
+
                 // chceck pattern against the case expression
                 unify(ctx, TyE::pure(p_t), case_t.clone(), level + 2)?;
 
                 ctx.typ_env.push(vars);
-                let (e, e_t) = algorithmj(ctx, e.clone(), level + 2)?;
-                let (e_t, e_f) = e_t.split_ef();
+                let (e, t) = algorithmj(ctx, e.clone(), level + 2)?;
+                let (t, f) = t.split_ef();
                 ctx.typ_env.pop();
 
-                res_t = unify(ctx, res_t, e_t, level + 2)?;
-                res_f = res_f | e_f;
-                new_alts.push((p, e))
+                new_alts.push((p, e));
+                res_t = unify(ctx, res_t, t, level + 2)?;
+                fs.insert(f);
             }
 
-            let result = update(ctx, res_t.with_ef(res_f));
-            trace_println!(ctx, "{tab}[case] done: {}", result.pretty_string(ctx.core));
-            (Case(e.into(), new_alts), result)
+            let res_t = update(ctx, res_t.with_ef(Ef::from(fs)));
+            trace_println!(ctx, "{tab}[case] done: {}", res_t.pretty_string(ctx.core));
+            (Case(e.into(), new_alts), res_t)
         }
         Handle(box e, Some(alts)) => {
+            //  handle <expr> with
+            //    [<ef> ~> <handler>]...
+            //
+            // A `handle` expression matches the effects produced by the given
+            // expression against the given handlers. The type of the `handle`
+            // expression is the type of the given expression with all handled
+            // effects removed.
+
             trace_println!(
                 ctx,
                 "{tab}[han] solving: handle {}",
@@ -238,6 +246,13 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             (Handle(han_e.into(), Some(new_alts)), result)
         }
         Handle(box e, None) => {
+            //  handle default <expr>
+            //
+            // A `handle` expression with no handlers defines a `handle default`
+            // expression which causes default handler binding for all effects in
+            // the handled expression. The type of the `handle default` expression
+            // is the type of given the expression with all bound effects removed.
+
             trace_println!(
                 ctx,
                 "{tab}[han] solving: handle default {}",
@@ -251,9 +266,9 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let mut fs = BTreeSet::new();
             for f in e_f.into_set().into_iter() {
                 if let Ef::Effect(ef_id, ts) = f {
-                    let ef = ctx.core.effects[&ef_id].clone();
-                    let ef = ef.borrow();
-                    if let Some(var_id) = ef.default {
+                    let effect = ctx.core.effects.get(&ef_id).cloned().unwrap();
+                    let effect = effect.borrow();
+                    if let Some(var_id) = effect.default {
                         new_alts.push((Ef::Effect(ef_id, ts), Expr::Var(var_id)));
                     } else {
                         fs.insert(Ef::Effect(ef_id, ts));
@@ -269,6 +284,12 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             (Handle(e.into(), Some(new_alts)), result)
         }
         Do(es) => {
+            // do <expr>
+            //   [expr]...
+            //
+            // The type of a `do` expression is the type of its last expression
+            // effected by the sum of all effects produced by the expressions.
+
             trace_println!(
                 ctx,
                 "{tab}[do ] solving: {}",

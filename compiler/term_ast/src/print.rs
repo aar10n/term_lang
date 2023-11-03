@@ -221,139 +221,6 @@ impl PrettyPrint<Context> for EfKind {
     }
 }
 
-impl PrettyPrint<Context> for DataDecl {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        writeln!(
-            out,
-            "{tab}{ATTR}name:{RESET} {}",
-            self.name.pretty_string(ctx)
-        )?;
-        self.ty_params.pretty_print(out, ctx, level)?;
-        writeln!(out, "{tab}{ATTR}constructors:{RESET}")?;
-        write_bulleted(out, ctx, &self.cons, level + 1)?;
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for DataConDecl {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        _: usize,
-    ) -> io::Result<()> {
-        let var_id = ctx.con_var_ids[&self.name.id.unwrap().data_con_id()];
-        write!(out, "{}<{}>", self.name.pretty_string(ctx), var_id)?;
-
-        if !self.fields.is_empty() {
-            write!(out, " {LPARN}")?;
-            for (i, ty) in self.fields.iter().enumerate() {
-                if i > 0 {
-                    write!(out, " ")?;
-                }
-                ty.pretty_print(out, ctx, 0)?;
-            }
-            write!(out, "{RPARN}")?;
-        }
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for EffectDecl {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        writeln!(
-            out,
-            "{tab}{ATTR}name:{RESET} {}",
-            self.name.pretty_string(ctx)
-        )?;
-        self.ty_params.pretty_print(out, ctx, level)?;
-        if !self.side_efs.is_empty() {
-            writeln!(
-                out,
-                "{tab}{ATTR}effects:{RESET} {}",
-                format_list(ctx, DELIM_COMMA, &self.side_efs)
-            )?;
-        }
-        writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
-        write_bulleted(out, ctx, &self.ops, level + 1)?;
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for EffectOpDecl {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        _: usize,
-    ) -> io::Result<()> {
-        write!(out, "{} {COLON} ", self.name.pretty_string(ctx))?;
-        self.ty.pretty_print(out, ctx, 0)?;
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for EffectHandler {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        write!(
-            out,
-            "{tab}{ATTR}name:{RESET} {}",
-            self.name.pretty_string(ctx)
-        )?;
-        if self.default {
-            writeln!(out, " {BOLD}{MAGENTA}[default]{RESET}");
-        } else {
-            writeln!(out, "");
-        }
-        self.ty_args.pretty_print(out, ctx, level)?;
-        writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
-        write_bulleted(out, ctx, &self.ops, level + 1)?;
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for EffectOpImpl {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        writeln!(out, "{}", self.name.pretty_string(ctx))?;
-        if !self.params.is_empty() {
-            writeln!(
-                out,
-                "{tab}{TABWIDTH}{ATTR}params:{RESET} {}",
-                format_list(ctx, DELIM_COMMA, &self.params)
-            )?;
-            writeln!(out, "{tab}{TABWIDTH}{ATTR}body:{RESET}",)?;
-        } else {
-            writeln!(out, "{tab}{TABWIDTH}{ATTR}expr:{RESET}",)?;
-        }
-        self.expr.pretty_print(out, ctx, level + 1)?;
-        Ok(())
-    }
-}
-
 impl PrettyPrint<Context> for ClassDecl {
     fn pretty_print<Output: io::Write>(
         &self,
@@ -475,6 +342,139 @@ impl PrettyPrint<Context> for MethodImpl {
             writeln!(out, "{tab}{TABWIDTH}{ATTR}expr:{RESET}",)?;
         }
         self.expr.pretty_print(out, ctx, level + 2)?;
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for DataDecl {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        writeln!(
+            out,
+            "{tab}{ATTR}name:{RESET} {}",
+            self.name.pretty_string(ctx)
+        )?;
+        self.ty_params.pretty_print(out, ctx, level)?;
+        writeln!(out, "{tab}{ATTR}constructors:{RESET}")?;
+        write_bulleted(out, ctx, &self.cons, level + 1)?;
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for DataConDecl {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        _: usize,
+    ) -> io::Result<()> {
+        let var_id = ctx.id_var_ids[&self.name.id.unwrap()];
+        write!(out, "{}<{}>", self.name.pretty_string(ctx), var_id)?;
+
+        if !self.fields.is_empty() {
+            write!(out, " {LPARN}")?;
+            for (i, ty) in self.fields.iter().enumerate() {
+                if i > 0 {
+                    write!(out, " ")?;
+                }
+                ty.pretty_print(out, ctx, 0)?;
+            }
+            write!(out, "{RPARN}")?;
+        }
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for EffectDecl {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        writeln!(
+            out,
+            "{tab}{ATTR}name:{RESET} {}",
+            self.name.pretty_string(ctx)
+        )?;
+        self.ty_params.pretty_print(out, ctx, level)?;
+        if !self.side_efs.is_empty() {
+            writeln!(
+                out,
+                "{tab}{ATTR}effects:{RESET} {}",
+                format_list(ctx, DELIM_COMMA, &self.side_efs)
+            )?;
+        }
+        writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
+        write_bulleted(out, ctx, &self.ops, level + 1)?;
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for EffectOpDecl {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        _: usize,
+    ) -> io::Result<()> {
+        write!(out, "{} {COLON} ", self.name.pretty_string(ctx))?;
+        self.ty.pretty_print(out, ctx, 0)?;
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for EffectHandler {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        write!(
+            out,
+            "{tab}{ATTR}name:{RESET} {}",
+            self.name.pretty_string(ctx)
+        )?;
+        if self.default {
+            writeln!(out, " {BOLD}{MAGENTA}[default]{RESET}");
+        } else {
+            writeln!(out, "");
+        }
+        self.ty_args.pretty_print(out, ctx, level)?;
+        writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
+        write_bulleted(out, ctx, &self.ops, level + 1)?;
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for EffectOpImpl {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        writeln!(out, "{}", self.name.pretty_string(ctx))?;
+        if !self.params.is_empty() {
+            writeln!(
+                out,
+                "{tab}{TABWIDTH}{ATTR}params:{RESET} {}",
+                format_list(ctx, DELIM_COMMA, &self.params)
+            )?;
+            writeln!(out, "{tab}{TABWIDTH}{ATTR}body:{RESET}",)?;
+        } else {
+            writeln!(out, "{tab}{TABWIDTH}{ATTR}expr:{RESET}",)?;
+        }
+        self.expr.pretty_print(out, ctx, level + 1)?;
         Ok(())
     }
 }

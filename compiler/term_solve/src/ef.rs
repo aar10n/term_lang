@@ -3,7 +3,7 @@ use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
-use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE};
+use core::{Ef, EffectId, MonoVarId, PolyVarId, Ty, TyE, VarId};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
 

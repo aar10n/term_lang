@@ -150,9 +150,9 @@ impl<'ctx> ResolveVisitor<'ctx> {
             match *id {
                 Id::DataCon(id) => {
                     // map data_con to its var_id first
-                    Ok(Some((*self.ast.con_var_ids.get(&id).unwrap(), Vis::Global)))
+                    Ok(Some((self.ast.id_var_ids[&id.into()], Vis::Global)))
                 }
-                Id::Decl(id) => match self.ast.decl_var_ids.get(&id) {
+                Id::Decl(id) => match self.ast.id_var_ids.get(&id.into()) {
                     Some(var_id) => Ok(Some((*var_id, Vis::Global))),
                     None => {
                         // the name is declared but not defined
@@ -162,11 +162,8 @@ impl<'ctx> ResolveVisitor<'ctx> {
                     }
                 },
                 Id::Handler(id) => {
-                    // map data_con to its var_id first
-                    Ok(Some((
-                        *self.ast.handler_var_ids.get(&id).unwrap(),
-                        Vis::Global,
-                    )))
+                    // map handler to its var_id first
+                    Ok(Some((self.ast.id_var_ids[&id.into()], Vis::Global)))
                 }
                 Id::Var(id) => Ok(Some((id, Vis::Global))),
                 id => Diagnostic::error("expected variable", self.core.id_as_span(id).unwrap())
@@ -214,10 +211,11 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         self.visit_effect_ident(&mut handler.effect)?;
         self.visit_handler_ident(&mut handler.name)?;
 
+        let current_scope = self.scope_id;
         self.scope_id = handler.effect.id;
         handler.ty_args.visit(self)?;
         handler.ops.visit(self)?;
-        self.scope_id = None;
+        self.scope_id = current_scope;
         Ok(())
     }
 
@@ -232,14 +230,45 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         op.expr.visit(self)
     }
 
+    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
+        let id = inst.inst_id.unwrap();
+        self.visit_class_ident(&mut inst.class)?;
+
+        let current_scope = self.scope_id;
+        self.scope_id = Some(id.into());
+        inst.walk(self)?;
+        self.scope_id = current_scope;
+        Ok(())
+    }
+
+    fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
+        let inst_id = self.scope_id.unwrap().inst_id();
+        let id = method.name.id.unwrap().var_id();
+        self.core.dep_graph.insert(id, BTreeSet::new());
+
+        let current_scope = self.scope_id;
+        self.scope_id = Some(id.into());
+        method.walk(self)?;
+        self.scope_id = current_scope;
+        Ok(())
+    }
+
     fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
-        if self.scopes.len() > 1 {
-            return Ok(());
+        // if self.scopes.len() > 1 {
+        //     return Ok(());
+        // }
+
+        let id = func.name.id.unwrap().var_id();
+        if let Some(parent_id) = self.current_var {
+            self.core.dep_graph.entry(parent_id).or_default().insert(id);
+        } else {
+            self.core.dep_graph.insert(id, BTreeSet::new());
         }
 
-        self.current_var = Some(func.name.id.unwrap().var_id());
+        let current_var = self.current_var;
+        self.current_var = Some(id);
         func.walk(self)?;
-        self.current_var = None;
+        self.current_var = current_var;
         Ok(())
     }
 
@@ -251,8 +280,8 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             return Ok(());
         }
 
-        let id = self.resolve_global_type("class", ident, Id::is_class)?;
-        ident.id = Some(id);
+        let class_id = self.resolve_global_type("class", ident, Id::is_class)?;
+        ident.id = Some(class_id);
         Ok(())
     }
 
@@ -261,8 +290,8 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             return Ok(());
         }
 
-        let id = self.resolve_global_type("data", ident, Id::is_data)?;
-        ident.id = Some(id);
+        let data_id = self.resolve_global_type("data", ident, Id::is_data)?;
+        ident.id = Some(data_id);
         Ok(())
     }
 
@@ -271,8 +300,8 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             return Ok(());
         }
 
-        let id = self.resolve_global_name("constructor", ident, Id::is_data_con)?;
-        ident.id = Some(id);
+        let con_id = self.resolve_global_name("constructor", ident, Id::is_data_con)?;
+        ident.id = Some(con_id);
         Ok(())
     }
 
@@ -291,8 +320,8 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             return Ok(());
         }
 
-        let id = self.resolve_global_name("handler", ident, Id::is_handler)?;
-        ident.id = Some(id);
+        let han_id = self.resolve_global_name("handler", ident, Id::is_handler)?;
+        ident.id = Some(han_id);
         Ok(())
     }
 
@@ -325,10 +354,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         if let Some(id) = ident.id {
             // this is a declaration
             if let Id::Var(id) = id {
-                if self.scopes.len() == 1 {
-                    // only add to dep graph if its declared at the global scope
-                    self.core.dep_graph.insert(id, BTreeSet::new());
-                }
                 self.scope_mut().vars.insert(ident.raw, id);
             }
             return Ok(());
@@ -342,7 +367,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
             ident.id = Some(id.into());
             Ok(())
         } else if self.ast.ambiguous_names.contains(&ident.raw) {
-            // ambiguous - resolve later
+            // ambiguous - resolve during type solving
             ident.id = None;
             Ok(())
         } else {

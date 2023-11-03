@@ -24,6 +24,7 @@ impl<'ctx> Context<'ctx> {
         Self {
             core,
             trace,
+
             typ_env,
             ty_set: UnionFind::new(),
             ef_set: UnionFind::new(),
@@ -50,3 +51,17 @@ impl<'ctx> Context<'ctx> {
         Ef::Mono(id)
     }
 }
+
+// impl Deref for Context<'_> {
+//     type Target = core::Context;
+
+//     fn deref(&self) -> &Self::Target {
+//         &self.core
+//     }
+// }
+
+// impl DerefMut for Context<'_> {
+//     fn deref_mut(&mut self) -> &mut Self::Target {
+//         &mut self.core
+//     }
+// }

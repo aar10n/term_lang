@@ -26,9 +26,6 @@ use type_env::TypeEnv;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-//
-//
-
 /// Infers the most general type of an expression.
 pub fn infer(core: &mut core::Context, e: Expr, trace: bool) -> diag::Result<(Expr, TyE)> {
     let mut ctx = Context::new(core, trace);
@@ -42,15 +39,16 @@ pub fn infer(core: &mut core::Context, e: Expr, trace: bool) -> diag::Result<(Ex
 }
 
 /// Satisfy a type equation.
-pub fn satisfy(core: &mut core::Context, e: Expr, t: &TyE) -> diag::Result<(Expr, TyE)> {
-    let mut ctx = Context::new_normal(core);
-    let (e, e_t) = match hm::algorithmj(&mut ctx, e, 0) {
-        Ok(u) => Ok(u),
-        Err(e) => Err(e),
-    }?;
-    let u = hm::update(&mut ctx, e_t);
-    let u = hm::unify(&mut ctx, t.clone(), u, 0)?;
-    Ok((e, u))
+pub fn satisfy(
+    core: &mut core::Context,
+    e: Expr,
+    t: TyE,
+    trace: bool,
+) -> diag::Result<(Expr, TyE)> {
+    let (e, e_t) = infer(core, e, trace)?;
+    let mut ctx = Context::new(core, trace);
+    let t = hm::unify(&mut ctx, t, e_t, 0)?;
+    Ok((e, t))
 }
 
 /// Sorts the dependency graph of the context returning a list of variable ids

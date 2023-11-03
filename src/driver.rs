@@ -54,7 +54,7 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         };
 
         println!("{}", body.pretty_string(ctx));
-        let (body, ty) = solve::infer(ctx, body, true)?;
+        let (body, ty) = solve::infer(ctx, body, false)?;
         println!("  {}", ty.pretty_string(ctx));
 
         let def = ctx.defs[&id].clone();

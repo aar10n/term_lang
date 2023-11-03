@@ -10,6 +10,7 @@ use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 use std::cell::RefCell;
+use std::f32::consts::E;
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::vec;
@@ -66,6 +67,9 @@ impl Lower for ast::Ty {
     type Target = core::TyE;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        // Lowering ast::Ty is a fairly straightforward conversion into core::TyE.
+        // The primitive types are mapped to symbols, strings, lists, and tuple
+        // expressions are desuggared into full constructor calls.
         use ast::TyKind;
         use core::{Id, Ty, TyE};
         let t = match &self.kind {
@@ -92,7 +96,7 @@ impl Lower for ast::Ty {
             TyKind::Func(a, b) => {
                 let a = a.lower(ctx)?;
                 let b = b.lower(ctx)?;
-                Ty::Func(a.into(), b.into()).into()
+                Ty::func(a, b).into()
             }
             TyKind::List(t) => {
                 let list_id = expect_data(ctx, "List")?;
@@ -130,6 +134,7 @@ impl Lower for ast::Ef {
     type Target = core::Ef;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        // Lowering ast::Ef is a direct 1:1 conversion into core::Ef.
         use ast::EfKind;
         use core::{Ef, Id, Ty};
         Ok(match &self.kind {
@@ -156,53 +161,130 @@ impl Lower for ast::Ef {
     }
 }
 
-impl Lower for ast::DataDecl {
-    type Target = (core::Data, Vec<core::Def>);
+//
+//
+
+impl Lower for ast::ClassDecl {
+    type Target = core::Class;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Data, Def, Ty, TyE};
-        let id = self.name.id.unwrap().data_id();
-        let span = ctx.core.id_as_span(id).unwrap();
-        let (params, constraints) = self.ty_params.lower(ctx)?;
-        let cons = self.cons.lower(ctx)?;
+        // Lowering ast::ClassDecl is a straightforward conversion into core::Class.
+        // The members are lowered and collected into a map from name to core::TyE.
+        use ast::MemberDeclKind;
+        use core::{Class, Def, Expr};
+        let id = unwrap_resolved_ident(&self.name)?.class_id();
+        let (_, cs) = self.ty_params.lower(ctx)?;
 
-        let param_tys = ids_to_tys(params.clone());
-        let data_ty = TyE::pure(Ty::Data(id, param_tys.clone()));
+        let mut entries = vec![];
+        for member in &self.members {
+            match &member.kind {
+                MemberDeclKind::AssocTy(_) => todo!(),
+                MemberDeclKind::Method(method) => {
+                    let (name, ty) = method.lower(ctx)?;
+                    entries.push((name, ty.with_cs(cs.clone())));
+                }
+            }
+        }
+
+        let decls = BTreeMap::from_iter(entries);
+        let class = Class::new(id, cs, decls);
+        Ok(class)
+    }
+}
+
+impl Lower for ast::MethodDecl {
+    type Target = (Ustr, core::TyE);
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        let name = self.name.raw;
+        let ty = self.ty.lower(ctx)?;
+        Ok((name, ty))
+    }
+}
+
+impl Lower for ast::ClassInst {
+    type Target = (core::ClassId, core::Def, Vec<core::Def>);
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        // Lowering ast::ClassInst involves representing the instance as a core::Expr
+        // record which maps the member names to definitions. The first definition
+        // returned contains the instance record itself, and the vector of defs
+        // contains the lifted definitions for all member functions.
+        use ast::MemberImplKind;
+        use core::{Constraint, Def, Expr};
+        let class_id = unwrap_resolved_ident(&self.class)?.class_id();
+        let id = ctx.ast.id_var_ids[&self.inst_id.unwrap().into()];
+        let (ts, mut cs) = self.ty_args.lower(ctx)?;
+        cs.insert(0, Constraint::Class(class_id, ts));
+
+        let mut defs = vec![];
+        let mut entries = vec![];
+        for member in &self.members {
+            match &member.kind {
+                MemberImplKind::AssocTy(..) => todo!(),
+                MemberImplKind::Method(method) => {
+                    let (name, def) = method.lower(ctx)?;
+                    entries.push((name, Expr::Var(def.id)));
+                    defs.push(def);
+                }
+            }
+        }
+
+        let body = Expr::record(entries);
+        let ty = TyE::infer().with_cs(cs);
+        let def = Def::new(id, ty, body);
+        Ok((class_id, def, defs))
+    }
+}
+
+impl Lower for ast::MethodImpl {
+    type Target = (Ustr, core::Def);
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        use core::{Def, Expr, Ty};
+        let id = unwrap_resolved_ident(&self.name)?.var_id();
+        let name = self.name.raw;
+        Ok(if self.params.is_empty() {
+            // variable
+            let expr = self.expr.lower(ctx)?;
+            let ty = TyE::infer();
+            (name, Def::new(id, ty, expr))
+        } else {
+            // function
+            let expr = Expr::lambda_n(self.params.lower(ctx)?, self.expr.lower(ctx)?);
+            let ty = TyE::infer();
+            (name, Def::new(id, ty, expr))
+        })
+    }
+}
+
+impl Lower for ast::DataDecl {
+    type Target = Vec<core::Def>;
+
+    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
+        // Lowering ast::DataDecl involves converting all data constructors to
+        use core::{Def, Expr, Ty};
+        let id = unwrap_resolved_ident(&self.name)?.data_id();
+        let span = ctx.core.id_as_span(id).unwrap();
+        let (ps, cs) = self.ty_params.lower(ctx)?;
+
+        let data_ty = TyE::pure(Ty::Data(id, ids_to_tys(ps))).with_cs(cs);
 
         // create the constructor built-in function definitions
         let mut defs = vec![];
-        for con in &cons {
-            let id = con.var_id;
+        for con in &self.cons {
+            let id = ctx.ast.id_var_ids[&con.name.id.unwrap()];
+            let fields = con.fields.lower(ctx)?;
+
             let ty = if con.fields.is_empty() {
                 data_ty.clone()
             } else {
-                make_ty_func(ctx, con.fields.iter().cloned(), data_ty.clone())
+                make_ty_func(ctx, fields, data_ty.clone())
             };
             defs.push(Def::new_builtin(id, ty));
         }
 
-        let data = Data {
-            id,
-            params,
-            constraints,
-            cons,
-        };
-        Ok((data, defs))
-    }
-}
-
-impl Lower for ast::DataConDecl {
-    type Target = core::DataCon;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::DataCon;
-        let id = unwrap_resolved_ident(&self.name)?.data_con_id();
-        let var_id = ctx.ast.con_var_ids[&id];
-        ctx.core
-            .register_id_name(var_id, self.name.raw, self.name.span());
-
-        let fields = self.fields.lower(ctx)?;
-        Ok(DataCon { id, var_id, fields })
+        Ok(defs)
     }
 }
 
@@ -210,112 +292,77 @@ impl Lower for ast::EffectDecl {
     type Target = (core::Effect, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Def, Ef, Effect, Ty, TyE};
+        // Lowering ast::EffectDecl requires both the conversion into core::Effect,
+        // and the declaration of special built-in 'effectful' versions of each of
+        // the declared effect operations. These built-in functions are essentially
+        // constructors for the effect as they all produce the
+        use core::{Def, Ef, Effect, Expr, Ty};
         let id = self.name.id.unwrap().effect_id();
+        let var_id = ctx.ast.id_var_ids[&id.into()];
         let (params, constraints) = self.ty_params.lower(ctx)?;
-        let combining_efs = self.side_efs.lower(ctx)?;
-        let ops = self.ops.lower(ctx)?;
-
+        let side_efs = self.side_efs.lower(ctx)?;
         let param_tys = ids_to_tys(params.clone());
+
         let effect = Ef::Effect(id, param_tys.clone());
-
-        let handler_ty = {
-            let mut rec = BTreeMap::new();
-            for (name, op) in self.ops.iter().map(|x| x.name.raw).zip(ops.iter()) {
-                let (t, f, cs) = op.ty.clone().into_tuple();
-                let f = f | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
-                let ty = TyE::new(t, f, cs);
-                rec.insert(name, ty);
-            }
-            TyE::pure(Ty::Record(rec))
-        };
-
-        // create the op function definitions
         let mut defs = vec![];
-        for op in &ops {
-            // an effect operation with the type `a -> b` corresponds to a global
-            // effectful function `a -> b ~ <effect>`.
-            let id = ctx.ast.op_var_ids[&op.id];
-            let (op_t, op_f, op_cs) = op.ty.clone().into_tuple();
+        let mut entries = vec![];
+        for (id, name, ty) in self.ops.lower(ctx)? {
+            let (t, f) = ty.split_ef();
+            let f = f | Ef::union(side_efs.clone());
+            let def = Def::new_builtin(id, t.clone().with_ef(f.clone() | effect.clone()));
+            let t = t.with_ef(f);
 
-            let f = op_f | effect.clone() | Ef::Union(BTreeSet::from_iter(combining_efs.clone()));
-            let ty = TyE::new(op_t, f, op_cs);
-            defs.push(Def::new_builtin(id, ty));
+            entries.push((name, t));
+            defs.push(def);
         }
 
-        let effect = Effect {
-            id,
-            params,
-            constraints,
-            combining_efs,
-            ops,
-            handler_ty,
-            handlers: vec![],
-            default: None,
-        };
+        let ops = BTreeMap::from_iter(entries.clone());
+        let handler_ty = TyE::record(entries);
+        let effect = Effect::new(id, side_efs, ops, handler_ty);
         Ok((effect, defs))
     }
 }
 
 impl Lower for ast::EffectOpDecl {
-    type Target = core::EffectOp;
+    type Target = (VarId, Ustr, core::TyE);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        let id = unwrap_resolved_ident(&self.name)?.effect_op_id();
+        use core::Def;
+        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
+        let name = self.name.raw;
         let ty = self.ty.lower(ctx)?;
-        Ok(core::EffectOp { id, ty })
+        Ok((var_id, name, ty))
     }
 }
 
 impl Lower for ast::EffectHandler {
-    type Target = (core::Handler, Vec<core::Def>);
+    type Target = (core::EffectId, core::Def, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Def, Expr, Handler, Ty};
+        use core::{Def, Expr};
         let effect_id = unwrap_resolved_ident(&self.effect)?.effect_id();
-        let id = self.name.id.unwrap().handler_id();
-        let var_id = ctx.ast.handler_var_ids[&id];
-        let (params, constraints) = self.ty_args.lower(ctx)?;
+        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
 
-        let mut rec_exprs = BTreeMap::new();
-        let mut rec_tys = BTreeMap::new();
-        let mut ops = BTreeMap::new();
         let mut defs = vec![];
-        for op in self.ops.iter() {
-            let name = op.name.raw;
-            let (op_id, def) = op.lower(ctx)?;
-            ops.insert(op_id, def.id);
-            rec_exprs.insert(name.clone(), Expr::Var(def.id));
-            rec_tys.insert(name.clone(), def.ty.clone());
+        let mut entries = vec![];
+        for op in &self.ops {
+            let (name, def) = op.lower(ctx)?;
+            entries.push((name, Expr::Var(def.id)));
             defs.push(def);
         }
 
-        let handler_ty = TyE::pure(Ty::Record(rec_tys));
-        let handler_def = Def::new(var_id, handler_ty, Expr::Record(rec_exprs));
-        defs.push(handler_def);
-
-        let handler = Handler {
-            effect_id,
-            id,
-            params,
-            constraints,
-            ops,
-        };
-        Ok((handler, defs))
+        let body = Expr::record(entries);
+        let def = Def::new(var_id, TyE::infer(), body);
+        Ok((effect_id, def, defs))
     }
 }
 
 impl Lower for ast::EffectOpImpl {
-    type Target = (EffectOpId, core::Def);
+    type Target = (Ustr, core::Def);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Def, Expr, Ty, TyE};
-
-        let op_id = match self.op_id {
-            Some(id) => id,
-            None => format!("expected op id").into_err()?,
-        };
-        let id = unwrap_resolved_ident(&self.name)?.var_id();
+        use core::{Def, Expr, TyE};
+        let var_id = unwrap_resolved_ident(&self.name)?.var_id();
         let body = if self.params.is_empty() {
             self.expr.lower(ctx)? // variable
         } else {
@@ -323,110 +370,8 @@ impl Lower for ast::EffectOpImpl {
             let b = self.expr.lower(ctx)?;
             Expr::lambda_n(ps, b)
         };
-
-        let ty = TyE::infer();
-        Ok((op_id, Def::new(id, ty, body)))
-    }
-}
-
-impl Lower for ast::ClassDecl {
-    type Target = (core::Class, Vec<Ustr>);
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use ast::MemberDeclKind;
-        use core::Class;
-        let id = self.name.id.unwrap().class_id();
-        let (params, constraints) = self.ty_params.lower(ctx)?;
-
-        let mut names = vec![];
-        let mut methods = vec![];
-        for member in &self.members {
-            match &member.kind {
-                MemberDeclKind::AssocTy(_) => todo!(),
-                MemberDeclKind::Method(method) => {
-                    methods.push(method.lower(ctx)?);
-                }
-            }
-        }
-
-        let class = Class {
-            id,
-            params,
-            constraints,
-            methods,
-            insts: vec![],
-        };
-        Ok((class, names))
-    }
-}
-
-impl Lower for ast::MethodDecl {
-    type Target = core::Method;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Def, Method};
-        let id = unwrap_resolved_ident(&self.name)?.decl_id();
-        let ty = self.ty.lower(ctx)?;
-        Ok(Method { id, ty })
-    }
-}
-
-impl Lower for ast::ClassInst {
-    type Target = (core::Inst, Vec<core::Def>);
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::Inst;
-        let class_id = self.class.id.unwrap().class_id();
-        let id = self.id.unwrap();
-        let (params, constraints) = self.ty_args.lower(ctx)?;
-
-        let mut methods = vec![];
-        let mut defs = vec![];
-        for member in &self.members {
-            let def = member.lower(ctx)?;
-            methods.push(def.id);
-            defs.push(def);
-        }
-
-        let inst = Inst {
-            id,
-            params,
-            constraints,
-            methods,
-        };
-        Ok((inst, defs))
-    }
-}
-
-impl Lower for ast::MemberImplKind {
-    type Target = core::Def;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use ast::MemberImplKind;
-        match &self {
-            MemberImplKind::AssocTy(..) => todo!(),
-            MemberImplKind::Method(method) => method.lower(ctx),
-        }
-    }
-}
-
-impl Lower for ast::MethodImpl {
-    type Target = core::Def;
-
-    fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        use core::{Bind, Def, Expr, Ty, TyE};
-        let id = unwrap_resolved_ident(&self.name)?.var_id();
-        Ok(if self.params.is_empty() {
-            // variable
-            let expr = self.expr.lower(ctx)?;
-            let ty = TyE::infer();
-            Def::new(id, ty, expr)
-        } else {
-            // function
-            let expr = Expr::lambda_n(self.params.lower(ctx)?, self.expr.lower(ctx)?);
-            let ty = TyE::infer();
-            Def::new(id, ty, expr)
-        })
+        let def = Def::new(var_id, TyE::infer(), body);
+        Ok((self.name.raw, def))
     }
 }
 
@@ -435,8 +380,7 @@ impl Lower for ast::VarDecl {
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Def;
-        let id = self.name.id.unwrap().decl_id();
-        let var_id = ctx.ast.decl_var_ids[&id];
+        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
         let name = self.name.raw;
         if !ctx.core.builtins.contains(&name) {
             return Ok(None);
@@ -588,7 +532,7 @@ impl Lower for ast::PatKind {
             }
             PatKind::DataCon(n, ps) => {
                 let con_id = unwrap_resolved_ident(n)?.data_con_id();
-                let var = Expr::Var(ctx.ast.con_var_ids[&con_id]);
+                let var = Expr::Var(ctx.ast.id_var_ids[&con_id.into()]);
                 Expr::apply_n(var, ps.lower(ctx)?)
             }
             PatKind::Tuple(ps) => {
@@ -811,9 +755,9 @@ fn primitive(t: &str) -> core::Ty {
 
 fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {
     expect_id_defined(&ctx.core.global_names, "variable", name, |id| match id {
-        Id::DataCon(id) => Some(ctx.ast.con_var_ids[&id]),
-        Id::Var(id) => Some(*id),
-        Id::Decl(id) => ctx.ast.decl_var_ids.get(&id).copied(),
+        &Id::DataCon(id) => Some(ctx.ast.id_var_ids[&id.into()]),
+        &Id::Decl(id) => Some(ctx.ast.id_var_ids[&id.into()]),
+        &Id::Var(id) => Some(id),
         _ => None,
     })
 }
