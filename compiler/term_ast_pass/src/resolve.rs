@@ -244,7 +244,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
     fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
         let inst_id = self.scope_id.unwrap().inst_id();
         let id = method.name.id.unwrap().var_id();
-        self.core.dep_graph.insert(id, BTreeSet::new());
+        self.ast.dep_graph.insert(id, BTreeSet::new());
 
         let current_scope = self.scope_id;
         self.scope_id = Some(id.into());
@@ -260,9 +260,9 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
 
         let id = func.name.id.unwrap().var_id();
         if let Some(parent_id) = self.current_var {
-            self.core.dep_graph.entry(parent_id).or_default().insert(id);
+            self.ast.dep_graph.entry(parent_id).or_default().insert(id);
         } else {
-            self.core.dep_graph.insert(id, BTreeSet::new());
+            self.ast.dep_graph.insert(id, BTreeSet::new());
         }
 
         let current_var = self.current_var;
@@ -361,7 +361,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
 
         if let Some((id, vis)) = self.resolve_var(ident)? {
             if let Some(parent_id) = self.current_var && matches!(vis, Vis::Global) {
-                self.core.dep_graph.entry(parent_id).or_default().insert(id);
+                self.ast.dep_graph.entry(parent_id).or_default().insert(id);
             }
 
             ident.id = Some(id.into());

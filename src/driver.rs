@@ -43,10 +43,26 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
     pass::lower_all(ast, ctx, module).into_result()?;
     // ctx.print_stdout(&());
 
-    let order = solve::sort_dependencies(&ctx);
-    for id in order {
-        println!("inferring type of {}", id.pretty_string(ctx));
+    let methods = ast
+        .method_ids
+        .clone()
+        .into_iter()
+        .filter(|id| {
+            ast.dep_graph
+                .get(id)
+                .and_then(|v| if v.is_empty() { None } else { Some(()) })
+                .is_none()
+        })
+        .collect::<Vec<_>>();
 
+    let order = solve::sort_dependencies(&ast.dep_graph);
+    for id in methods.into_iter().chain(order.into_iter()) {
+        let def = ctx.defs[&id].clone();
+        if !def.borrow().ty.is_infer() {
+            continue;
+        }
+
+        println!("inferring type of {}", id.pretty_string(ctx));
         let body = {
             let def = ctx.defs[&id].clone();
             let def = def.borrow();
@@ -57,7 +73,6 @@ pub fn evaluate(ctx: &mut Context, source_id: SourceId, repl: bool) -> Result<()
         let (body, ty) = solve::infer(ctx, body, false)?;
         println!("  {}", ty.pretty_string(ctx));
 
-        let def = ctx.defs[&id].clone();
         let mut def = def.borrow_mut();
         def.body = body.clone();
         def.ty = ty;

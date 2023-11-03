@@ -130,6 +130,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         self.core
             .register_scoped_name(inst_id, id, name, span, Exclusivity::None)
             .ok_or_duplicate_decl_err(&self.core, "member")?;
+        self.ast.method_ids.insert(id);
 
         method.name.id = Some(id.into());
         method.params.visit(self)?;

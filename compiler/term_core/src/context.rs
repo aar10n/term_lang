@@ -18,12 +18,10 @@ pub struct Context {
     pub global_types: UstrMap<Id>,
     pub name_scopes: BTreeMap<ParentId, NameScope>,
 
-    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
-    pub typings: HashMap<Expr, TyE>,
-
     pub defs: BTreeMap<VarId, Rc<RefCell<Def>>>,
     pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
     pub effects: BTreeMap<EffectId, Rc<RefCell<Effect>>>,
+    pub typings: HashMap<Expr, TyE>,
 }
 
 impl Context {
@@ -37,7 +35,6 @@ impl Context {
             global_names: UstrMap::default(),
             global_types: UstrMap::default(),
             name_scopes: BTreeMap::default(),
-            dep_graph: BTreeMap::default(),
 
             defs: BTreeMap::default(),
             classes: BTreeMap::default(),

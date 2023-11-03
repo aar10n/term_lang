@@ -133,6 +133,10 @@ impl TyE {
     // Predicates
     //
 
+    pub fn is_infer(&self) -> bool {
+        matches!(self.ty, Ty::Infer) && matches!(self.ef, Ef::Infer)
+    }
+
     pub fn is_monomorphic(&self) -> bool {
         self.ty.is_monomorphic() && self.ef.is_monomorphic()
     }

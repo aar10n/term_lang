@@ -16,6 +16,9 @@ use ustr::{Ustr, UstrMap, UstrSet};
 #[derive(Debug)]
 pub struct Context {
     pub ambiguous_names: UstrSet,
+    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
+    pub method_ids: BTreeSet<VarId>,
+
     pub decls: BTreeMap<DeclId, Rc<RefCell<VarDecl>>>,
     pub id_var_ids: BTreeMap<Id, VarId>,
     pub var_decl_ids: BTreeMap<VarId, DeclId>,
@@ -25,6 +28,9 @@ impl Context {
     pub fn new() -> Self {
         Self {
             ambiguous_names: UstrSet::default(),
+            dep_graph: BTreeMap::default(),
+            method_ids: BTreeSet::default(),
+
             decls: BTreeMap::default(),
             id_var_ids: BTreeMap::default(),
             var_decl_ids: BTreeMap::default(),
