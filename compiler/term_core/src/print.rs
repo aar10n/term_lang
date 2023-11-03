@@ -3,8 +3,8 @@ use crate::Context;
 
 use term_print::ansi::{
     chars::{
-        ARROW, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LBRACE, LPARN, PERIOD, PIPE_SEP, PLUS_SEP,
-        QMARK, QUOTE, RBRAC, RBRACE, RPARN, TILDE,
+        ARROW, COLON, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LBRACE, LPARN, PERIOD, PIPE_SEP,
+        PLUS_SEP, QMARK, QUOTE, RBRAC, RBRACE, RPARN, TILDE,
     },
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, ITALIC, KEYWORD, MAGENTA, PUNCT, RED, RESET, TAG, TITLE,
     UNDERLINE,
@@ -337,6 +337,45 @@ impl PrettyPrint<Context> for Lit {
 //
 //
 
+impl PrettyPrint<Context> for Class {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH;
+        let ttab = format!("{tab}{TABWIDTH}");
+        writeln!(out, "{:-^1$}", "", 80)?;
+        writeln!(out, "{TITLE}Class{RESET}")?;
+        writeln!(out, "{tab}{ATTR}id:{RESET} {}", self.id.pretty_string(ctx))?;
+        if !self.cs.is_empty() {
+            writeln!(
+                out,
+                "{tab}{ATTR}constraints:{RESET} {}",
+                format_list(ctx, ", ", &self.cs)
+            )?;
+        }
+        if !self.decls.is_empty() {
+            writeln!(out, "{tab}{ATTR}decls:{RESET}")?;
+            for (name, ty) in &self.decls {
+                writeln!(
+                    out,
+                    "{ttab}{BLUE}{}{RESET} {COLON} {}",
+                    name.as_ref(),
+                    ty.pretty_string(ctx),
+                )?;
+            }
+        }
+        if !self.insts.is_empty() {
+            writeln!(out, "{tab}{ATTR}insts:{RESET}")?;
+            write_bulleted(out, ctx, &self.insts, level + 1)?;
+        }
+        writeln!(out, "{:-^1$}", "", 80)?;
+        Ok(())
+    }
+}
+
 impl PrettyPrint<Context> for Def {
     fn pretty_print<Output: io::Write>(
         &self,
@@ -361,6 +400,41 @@ impl PrettyPrint<Context> for Def {
             writeln!(out, "{ttab}{ATTR}body:{RESET}")?;
             write_indented(out, ctx, &self.body, level + 1, true)?;
         }
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for Effect {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        info: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH;
+        let ttab = format!("{tab}{TABWIDTH}");
+        writeln!(out, "{:-^1$}", "", 80)?;
+        writeln!(out, "{TITLE}Effect{RESET}")?;
+        writeln!(out, "{tab}{ATTR}id:{RESET} {}", self.id.pretty_string(ctx))?;
+        if !self.ops.is_empty() {
+            writeln!(out, "{tab}{ATTR}ops:{RESET}")?;
+            for (name, ty) in &self.ops {
+                writeln!(
+                    out,
+                    "{ttab}{BLUE}{}{RESET} {COLON} {}",
+                    name.as_ref(),
+                    ty.pretty_string(ctx),
+                )?;
+            }
+        }
+        if let Some(default) = self.default {
+            writeln!(
+                out,
+                "{tab}{ATTR}default:{RESET} {}",
+                default.pretty_string(ctx)
+            )?;
+        }
+        writeln!(out, "{:-^1$}", "", 80)?;
         Ok(())
     }
 }

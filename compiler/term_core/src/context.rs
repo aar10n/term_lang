@@ -11,8 +11,8 @@ use ustr::{Ustr, UstrMap, UstrSet};
 pub struct Context {
     pub ids: Ids,
     pub sources: SourceMap,
-
     pub builtins: UstrSet,
+
     pub id_names: BTreeMap<Id, (Ustr, Span)>,
     pub global_names: UstrMap<Id>,
     pub global_types: UstrMap<Id>,
@@ -31,8 +31,8 @@ impl Context {
         Self {
             ids: Ids::default(),
             sources: SourceMap::default(),
-
             builtins: UstrSet::default(),
+
             id_names: BTreeMap::default(),
             global_names: UstrMap::default(),
             global_types: UstrMap::default(),

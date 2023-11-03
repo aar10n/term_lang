@@ -24,9 +24,8 @@ pub struct Context {
 impl Context {
     pub fn new() -> Self {
         Self {
-            decls: BTreeMap::default(),
-
             ambiguous_names: UstrSet::default(),
+            decls: BTreeMap::default(),
             id_var_ids: BTreeMap::default(),
             var_decl_ids: BTreeMap::default(),
         }
