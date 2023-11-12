@@ -25,7 +25,7 @@ pub fn infer_all<'a>(
     core: &'a mut core::Context,
     module: &'a mut Module,
 ) -> PassResult {
-    println!(">>> infering method types <<<");
+    // println!(">>> infering method types <<<");
     for (var_id, inst_id) in ast.method_ids.clone() {
         let name = core.id_as_ustr(var_id);
         match infer_def_ty(core, var_id) {
@@ -34,26 +34,26 @@ pub fn infer_all<'a>(
         };
     }
 
-    println!("------ signatures methods ------");
-    for (ty, names) in core.signatures.iter() {
-        println!(
-            "{}: {}",
-            ty.pretty_string(core),
-            names
-                .iter()
-                .cloned()
-                .map(|n| n.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-    }
-    println!("-------------------------------");
+    // println!("------ signatures methods ------");
+    // for (ty, names) in core.signatures.iter() {
+    //     println!(
+    //         "{}: {}",
+    //         ty.pretty_string(core),
+    //         names
+    //             .iter()
+    //             .cloned()
+    //             .map(|n| n.to_string())
+    //             .collect::<Vec<_>>()
+    //             .join(", ")
+    //     );
+    // }
+    // println!("-------------------------------");
 
-    println!("{:-^1$}", "", 32);
-    core.functions.print_stdout(&core);
-    println!("{:-^1$}", "", 32);
+    // println!("{:-^1$}", "", 32);
+    // core.functions.print_stdout(&core);
+    // println!("{:-^1$}", "", 32);
 
-    println!(">>> infering function types <<<");
+    // println!(">>> infering function types <<<");
     let method_ids = ast.method_ids.iter().map(|(id, _)| *id).collect::<Vec<_>>();
     let ids = DependencyGraph::from(&ast.dep_graph)
         .removing(&method_ids)
@@ -63,7 +63,6 @@ pub fn infer_all<'a>(
             return PassResult::Err(vec![e]);
         }
     }
-
     PassResult::Ok(())
 }
 
@@ -82,8 +81,8 @@ fn infer_def_ty<'a>(core: &'a mut core::Context, id: VarId) -> diag::Result<TyE>
         def.body.clone()
     };
 
-    println!("  {}", body.pretty_string(core));
-    let (body, ty) = solve::infer(core, body, false)?;
+    // println!("  {}", body.pretty_string(core));
+    let (body, ty) = solve::infer(core, body, true)?;
     println!("  {}", ty.pretty_string(core));
 
     let mut def = def.borrow_mut();

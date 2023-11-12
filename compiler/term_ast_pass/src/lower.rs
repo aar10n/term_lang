@@ -91,7 +91,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         let han_id = handler.name.id.unwrap().handler_id();
         let var_id = self.ast.id_var_ids[&han_id.into()];
 
-        let (ops, defs) = handler.lower_ast_core(self.ast, self.core)?;
+        let (ops, def, defs) = handler.lower_ast_core(self.ast, self.core)?;
         if handler.default {
             let effect = self.core.effects.get(&effect_id).cloned().unwrap();
             let mut effect = effect.borrow_mut();
@@ -99,6 +99,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
         }
 
         self.core.handlers.insert(han_id, ops);
+        self.register_def(def);
         self.register_defs(defs);
         Ok(())
     }

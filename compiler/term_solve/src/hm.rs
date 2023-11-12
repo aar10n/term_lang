@@ -112,8 +112,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 // here we have to resolve the ambiguous symbol to a function.
                 // we do this by checking the expected signature against those
                 // of all the implementations registered for the symbol.
-                println!("---> {} | {}", s, f_t.pretty_string(ctx.core));
-
                 let mut res = Right(vec![]);
                 for (id, _) in ctx.core.functions[&s].clone() {
                     let Right(mut errs) = res else {
@@ -145,8 +143,6 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                         };
                     },
                 };
-
-                println!("---> RESOLVED: {}", id.pretty_string(ctx.core));
                 Expr::Var(id)
             } else {
                 e
@@ -156,7 +152,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let (t, f) = t.split_ef();
             fs.insert(f);
 
-            let f_t = unify(ctx, f_t, t, level + 1)?;
+            let f_t = unify(ctx, t, f_t, level + 1)?;
             let res_t = update(ctx, res_t.with_ef(Ef::from(fs)));
             let res_e = Expr::apply_n(e, es);
             trace_println!(ctx, "{tab}[app] done: {}", res_t.pretty_string(ctx.core));

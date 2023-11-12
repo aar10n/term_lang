@@ -294,7 +294,6 @@ impl Lower for ast::EffectDecl {
         // constructors for the effect as they all produce the
         use core::{Def, Ef, Effect, Expr, Ty};
         let id = self.name.id.unwrap().effect_id();
-        let var_id = ctx.ast.id_var_ids[&id.into()];
         let (params, constraints) = self.ty_params.lower(ctx)?;
         let side_efs = self.side_efs.lower(ctx)?;
         let param_tys = ids_to_tys(params.clone());
@@ -332,10 +331,11 @@ impl Lower for ast::EffectOpDecl {
 }
 
 impl Lower for ast::EffectHandler {
-    type Target = (BTreeMap<Ustr, VarId>, Vec<core::Def>);
+    type Target = (BTreeMap<Ustr, VarId>, core::Def, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Def, Expr};
+        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
 
         let mut defs = vec![];
         let mut entries = vec![];
@@ -345,8 +345,10 @@ impl Lower for ast::EffectHandler {
             defs.push(def);
         }
 
-        let ops = BTreeMap::from_iter(entries);
-        Ok((ops, defs))
+        let ops = BTreeMap::from_iter(entries.clone());
+        let body = Expr::record(entries.into_iter().map(|(n, id)| (n, Expr::Var(id))));
+        let def = Def::new(var_id, TyE::infer(), body);
+        Ok((ops, def, defs))
     }
 }
 

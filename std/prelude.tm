@@ -1,58 +1,61 @@
-data Bool = True | False;
+panic : a -> never
+builtin_add_int : Int -> Int -> Int
+builtin_sub_int : Int -> Int -> Int
+builtin_put_char : Char -> () ~ Except'IOError
+builtin_get_char : () -> Char ~ Except'IOError 
 
-
-# Classes
-
-class Show : a
-    | show : a -> String
+data List : a =
+    | Nil
+    | Cons a (List'a)
     ;
 
-class Eq : a
-    | `==` : a -> a -> Bool
+
+class Num : a
+  | `+` : a -> a -> a
+  | `-` : a -> a -> a
+  ;
+
+instance Num'Int
+  | `+` = builtin_add_int
+  | `-` = builtin_sub_int
+  ;
+
+
+effect Except : e
+    | raise : e -> ()
     ;
 
-# Instances
-
-instance Show'Int
-    | show = show_int
+default handler panic_exception for Except'e
+    | raise = panic
     ;
 
-instance Show'Char
-    | show = show_char
+
+data IOError = IOError { msg : String };
+
+# you can specify a list of side effects after a `~` which may occur in handlers of the effect
+effect IO ~ Except'IOError
+    | read_char : () -> Char
+    | write_char : Char -> ()
     ;
 
-instance Show'Bool
-    | show x = case x
-        | True -> "True"
-        | False -> "False"
+default handler stdio for IO
+    | read_char = builtin_get_char
+    | write_char = builtin_put_char
+    ;
+
+
+println s = 
+    handle case s
+        | [] -> write_char '\n'
+        | x:xs -> write_char x; println xs
         ;
+    | Except'IOError ~> panic_exception
     ;
 
-instance Show'String
-    | show s = s
-    ;
-
-
-map : (a -> b) -> List'a -> List'b
-map f xs = case xs
-    | Cons x xs -> Cons (f x) (map f xs)
-    | Nil -> Nil
-    ;
-
-front : List'a -> a ~ Except'String
-front xs = case xs
-    | Cons x _ -> x
-    | Nil -> throw "Empty list"
-    ;
-
-
-inc_with_print : Int -> Int ~ IO
-inc_with_print x = do
-    | println x
+# the effect operator `~` binds default handers to effects in the applied expression
+purefn x = do
+    | ~println "hi"
     | x + 1
     ;
 
-map (x => x + 1) [1, 2, 3] : List'Int
-map inc_with_print [1, 2, 3] : List'(Int ~ IO)
-
-# we have to 'handle' the effect
+main () = purefn 2

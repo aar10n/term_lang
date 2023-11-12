@@ -113,6 +113,7 @@ impl<T: Clone + Ord + Eq> DependencyGraph<T> {
         while let deps = self.pop_next() && !deps.is_empty() {
             res.extend(deps);
         }
+        res.reverse();
         res
     }
 
