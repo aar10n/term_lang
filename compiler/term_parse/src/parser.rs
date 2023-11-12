@@ -96,11 +96,6 @@ peg::parser! {
             } /
             expected!("operator")
 
-        rule bool_lit() -> LitKind = quiet!{
-            kw(<"true">) { LitKind::Bool(true) } /
-            kw(<"false">) { LitKind::Bool(false) }} /
-            expected!("boolean")
-
         rule int_lit() -> LitKind = quiet!{
             v:int_base(2, <"0b">, <['0'|'1']>) {v} /
             v:int_base(8, <"0o">, <['0'..='7']>) {v} /
@@ -110,7 +105,7 @@ peg::parser! {
 
         rule float_lit() -> LitKind = quiet!{
             d:$("." ['0'..='9']+) { LitKind::Float(d.parse::<f64>().unwrap()) } /
-            d:$(['0'..='9']+ ".") { LitKind::Float(d.parse::<f64>().unwrap()) }} /
+            d:$(['0'..='9']+ "." ['0'..='9']*) { LitKind::Float(d.parse::<f64>().unwrap()) }} /
             expected!("float")
 
         rule char_lit() -> LitKind =
@@ -122,7 +117,7 @@ peg::parser! {
             expected!("string")
 
         rule lit() -> Lit =
-            node(<k:(bool_lit() / int_lit() / float_lit() / char_lit() / string_lit()) { k }>)
+            node(<k:(float_lit() / int_lit() / char_lit() / string_lit()) { k }>)
 
         rule ident() -> Ident = quiet!{
             "`" ident:span(<op:ident_operator() { Ident::from(op) }>) "`" {ident} /
@@ -201,10 +196,6 @@ peg::parser! {
 
             "_" { TyKind::Infer }
             "never" { TyKind::Never }
-            "Int" { TyKind::Int }
-            "Float" { TyKind::Float }
-            "Bool" { TyKind::Bool }
-            "Char" { TyKind::Char }
             "String" { TyKind::String }
             "()" { TyKind::Unit }
 
@@ -365,6 +356,8 @@ peg::parser! {
         >)
 
         pub rule data_decl() -> DataDecl = span(<
+            kw(<"data">) __ n:ty_ident() _ ps:ty_params() _ ";" { DataDecl::new(n, ps, vec![]) }
+            /
             kw(<"data">) __ n:ty_ident() _ ps:ty_params() _ "=" _ cs:data_multiline(<data_con()>) {
                 DataDecl::new(n, ps, cs)
             }

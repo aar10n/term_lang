@@ -22,11 +22,18 @@ use std::collections::BTreeMap;
 
 pub fn new_context() -> Context {
     let mut ctx = Context::new();
-    ctx.register_builtin("panic");
-    ctx.register_builtin("builtin_add_int");
-    ctx.register_builtin("builtin_sub_int");
-    ctx.register_builtin("builtin_put_char");
-    ctx.register_builtin("builtin_get_char");
+    ctx.register_builtin_type("Char");
+    ctx.register_builtin_type("Int");
+    ctx.register_builtin_type("Float");
+    ctx.register_builtin_type("Double");
+
+    ctx.register_builtin_name("panic");
+    ctx.register_builtin_name("builtin_itof");
+    ctx.register_builtin_name("builtin_ftoi");
+    ctx.register_builtin_name("builtin_add_int");
+    ctx.register_builtin_name("builtin_sub_int");
+    ctx.register_builtin_name("builtin_put_char");
+    ctx.register_builtin_name("builtin_get_char");
     ctx
 }
 

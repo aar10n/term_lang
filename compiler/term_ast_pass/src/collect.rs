@@ -160,13 +160,27 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
     }
 
     fn visit_data_decl(&mut self, data: &mut DataDecl) -> diag::Result<()> {
-        let id = self.core.ids.next_data_id();
         let name = data.name.raw;
         let span = data.name.span();
+        let id = if self.core.builtin_types.contains(&name) {
+            // a built-in data type declaration
+            if !data.cons.is_empty() {
+                return Diagnostic::error("invalid redeclaration of builtin data type", span)
+                    .into_err();
+            }
 
-        self.core
-            .register_global_type(id, name, span)
-            .ok_or_duplicate_decl_err(&self.core, "data")?;
+            let id = self.core.global_types[&name].data_id();
+            // associate the builtin with the real source declaration
+            self.core.register_id_name(id, name, span);
+            id
+        } else {
+            // new data declaration
+            let id = self.core.ids.next_data_id();
+            self.core
+                .register_global_type(id, name, span)
+                .ok_or_duplicate_decl_err(&self.core, "data")?;
+            id
+        };
 
         self.scope_id = Some(id.into());
         data.name.id = Some(id.into());
@@ -295,10 +309,10 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         self.all_decls.insert(name, (id, var.span()));
 
         // this declaration is for a compiler builtin
-        if self.core.builtins.contains(&name) {
-            // create a variable id associated with the declaration to use in resolution
-            let var_id = self.core.ids.next_var_id();
-            self.core.register_global_name(var_id, name, span).unwrap();
+        if self.core.builtin_names.contains(&name) {
+            let var_id = self.core.global_names[&name].var_id();
+            self.core.register_id_name(var_id, name, span);
+
             self.ast.id_var_ids.insert(id.into(), var_id);
             self.ast.var_decl_ids.insert(var_id, id);
         }

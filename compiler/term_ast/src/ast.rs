@@ -61,14 +61,6 @@ pub enum TyKind {
     Never,
     /// The unit type.
     Unit,
-    /// An integer type.
-    Int,
-    /// A floating point type.
-    Float,
-    /// A boolean type.
-    Bool,
-    /// A character type.
-    Char,
     /// A string type.
     String,
     /// A type name or instantiation.

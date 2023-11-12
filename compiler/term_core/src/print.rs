@@ -149,11 +149,19 @@ impl PrettyPrint<Context> for Expr {
         let tab = TABWIDTH.repeat(level);
         write!(out, "{tab}")?;
         match self {
-            Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
             Expr::Lit(l) => l.pretty_print(out, ctx, 0),
             Expr::Sym(n) => write!(out, "{BLUE}`{}`{RESET}", n),
             Expr::Var(id) => write!(out, "{}", id.pretty_string(ctx)),
+            Expr::Type(ty) => ty.pretty_print(out, ctx, 0),
 
+            Expr::Cast(box e, box t) => {
+                write!(
+                    out,
+                    "<{} as {}>",
+                    e.pretty_string(ctx),
+                    t.pretty_string(ctx)
+                )
+            }
             Expr::Apply(a, b) => {
                 write!(out, "{LPARN}")?;
                 a.pretty_print(out, ctx, 0)?;
@@ -327,7 +335,7 @@ impl PrettyPrint<Context> for Lit {
             Lit::Unit => write!(out, "{LPARN}{RPARN}"),
             Lit::Bool(b) => write!(out, "{MAGENTA}{}{RESET}", b),
             Lit::Int(i) => write!(out, "{CYAN}{}{RESET}", i),
-            Lit::Float(f) => write!(out, "{CYAN}{}{RESET}", f),
+            Lit::Float(f) => write!(out, "{CYAN}{}{RESET}", f64::from_bits(*f)),
             Lit::Char(c) => write!(out, "{GREEN}{}{RESET}", c.escape_default()),
             Lit::Symbol(s) => write!(out, "{BLUE}'{}{RESET}", s),
         }

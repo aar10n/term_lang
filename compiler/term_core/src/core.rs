@@ -286,6 +286,13 @@ impl Ty {
     // Accessors
     //
 
+    pub fn arity(&self) -> usize {
+        match self {
+            Self::Func(box a, _) => 1 + a.arity(),
+            _ => 0,
+        }
+    }
+
     pub fn return_ty(&self) -> Option<&TyE> {
         match self {
             Self::Func(_, b) => Some(b),
@@ -404,15 +411,17 @@ pub enum Constraint {
 /// An generalized expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
-    /// Type.
-    Type(P<TyE>),
     /// Literal.
     Lit(Lit),
     /// Symbol.
     Sym(Ustr),
     /// Variable.
     Var(VarId),
+    /// Type.
+    Type(P<TyE>),
 
+    /// Type cast.
+    Cast(P<Expr>, P<TyE>),
     /// Application (a b).
     Apply(P<Expr>, P<Expr>),
     /// Lambda abstraction (λx.a).
@@ -444,6 +453,10 @@ impl Expr {
 
     pub fn ty(t: TyE) -> Self {
         Self::Type(t.into())
+    }
+
+    pub fn cast(e: Expr, t: TyE) -> Self {
+        Self::Cast(e.into(), t.into())
     }
 
     pub fn apply(a: Expr, b: Expr) -> Self {
@@ -573,21 +586,26 @@ impl Expr {
 impl Hash for Expr {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match self {
-            Self::Type(t) => {
-                state.write_u8(0);
-                t.hash(state);
-            }
             Self::Lit(l) => {
-                state.write_u8(1);
+                state.write_u8(0);
                 l.hash(state);
             }
             Self::Sym(s) => {
-                state.write_u8(2);
+                state.write_u8(1);
                 s.hash(state);
             }
             Self::Var(v) => {
-                state.write_u8(3);
+                state.write_u8(2);
                 v.hash(state);
+            }
+            Self::Type(t) => {
+                state.write_u8(3);
+                t.hash(state);
+            }
+            Self::Cast(a, b) => {
+                state.write_u8(12);
+                a.hash(state);
+                b.hash(state);
             }
             Self::Apply(a, b) => {
                 state.write_u8(4);
@@ -664,13 +682,13 @@ pub enum Lit {
 }
 
 impl Lit {
-    pub fn as_ty(&self) -> Ty {
+    pub fn as_ty(&self, ctx: &crate::Context) -> Ty {
         match self {
             Self::Unit => Ty::Unit,
-            Self::Bool(_) => Ty::sym("Bool"),
-            Self::Int(_) => Ty::sym("Int"),
-            Self::Float(_) => Ty::sym("Float"),
-            Self::Char(_) => Ty::sym("Char"),
+            Self::Bool(_) => Ty::Data(ctx.get_builtin_type("Bool"), vec![]),
+            Self::Int(_) => Ty::Data(ctx.get_builtin_type("Int"), vec![]),
+            Self::Float(_) => Ty::Data(ctx.get_builtin_type("Float"), vec![]),
+            Self::Char(_) => Ty::Data(ctx.get_builtin_type("Char"), vec![]),
             Self::Symbol(s) => Ty::Sym(*s),
         }
     }

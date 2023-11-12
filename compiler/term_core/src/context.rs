@@ -1,5 +1,6 @@
 use crate::core::*;
 use term_common::{source::SourceMap, span::Spanned};
+use term_print::PrettyString;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -7,11 +8,12 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Context {
     pub ids: Ids,
     pub sources: SourceMap,
-    pub builtins: UstrSet,
+    pub builtin_names: UstrSet,
+    pub builtin_types: UstrSet,
 
     pub id_names: BTreeMap<Id, (Ustr, Span)>,
     pub global_names: UstrMap<Id>,
@@ -31,26 +33,7 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
-        Self {
-            ids: Ids::default(),
-            sources: SourceMap::default(),
-            builtins: UstrSet::default(),
-
-            id_names: BTreeMap::default(),
-            global_names: UstrMap::default(),
-            global_types: UstrMap::default(),
-            name_scopes: BTreeMap::default(),
-
-            defs: BTreeMap::default(),
-            classes: BTreeMap::default(),
-            effects: BTreeMap::default(),
-            instances: BTreeMap::default(),
-            handlers: BTreeMap::default(),
-
-            functions: UstrMap::default(),
-            signatures: HashMap::default(),
-            typings: HashMap::default(),
-        }
+        Self::default()
     }
 
     pub fn id_as_str<T: Into<Id>>(&self, id: T) -> &str {
@@ -78,16 +61,41 @@ impl Context {
         self.id_names.insert(id.into(), (name, span));
     }
 
-    pub fn register_builtin(&mut self, name: &str) {
+    pub fn register_builtin_name(&mut self, name: &str) {
         let name = Ustr::from(name);
         if let Some(existing_id) = self.global_names.get(&name) {
-            panic!("builtin `{}` already registered as {:?}", name, existing_id);
-        }
-        if let Some(existing_func) = self.builtins.get(&name) {
-            panic!("builtin `{}` already registered", name);
+            panic!(
+                "`{}` already registered as {}",
+                name,
+                existing_id.pretty_string(self)
+            );
         }
 
-        self.builtins.insert(name);
+        // declare it internally at first but will be associated with a
+        // real declaration site later
+        let id = self.ids.next_var_id();
+        self.builtin_names.insert(name);
+        self.id_names.insert(id.into(), (name, Span::default()));
+        self.global_names.insert(name, id.into());
+    }
+
+    pub fn register_builtin_type(&mut self, name: &str) {
+        let name = Ustr::from(name);
+        if let Some(existing_id) = self.global_types.get(&name) {
+            panic!(
+                "`{}` already registered as {}",
+                name,
+                existing_id.pretty_string(self)
+            );
+        }
+        if let Some(_) = self.builtin_types.get(&name) {
+            panic!("builtin type `{}` already registered", name);
+        }
+
+        let id = self.ids.next_data_id();
+        self.builtin_types.insert(name);
+        self.id_names.insert(id.into(), (name, Span::default()));
+        self.global_types.insert(name, id.into());
     }
 
     pub fn register_global_name<T: Into<Id> + Copy>(
@@ -172,6 +180,24 @@ impl Context {
             .get(&parent_id)
             .and_then(|ns| ns.names.get(name))
             .copied()
+    }
+
+    pub fn get_builtin_name(&self, name: impl AsRef<str>) -> VarId {
+        let name = name.as_ref();
+        self.global_names
+            .get(&Ustr::from(name))
+            .copied()
+            .unwrap_or_else(|| panic!("builtin name `{}` not found", name))
+            .var_id()
+    }
+
+    pub fn get_builtin_type(&self, name: impl AsRef<str>) -> DataId {
+        let name = name.as_ref();
+        self.global_types
+            .get(&Ustr::from(name))
+            .copied()
+            .unwrap_or_else(|| panic!("builtin type `{}` not found", name))
+            .data_id()
     }
 }
 

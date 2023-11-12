@@ -77,10 +77,6 @@ impl Lower for ast::Ty {
             TyKind::Infer => Ty::Infer.into(),
             TyKind::Never => Ty::Never.into(),
             TyKind::Unit => Ty::Unit.into(),
-            TyKind::Int => primitive("Int").into(),
-            TyKind::Float => primitive("Float").into(),
-            TyKind::Bool => primitive("Bool").into(),
-            TyKind::Char => primitive("Char").into(),
             TyKind::String => {
                 let list_id = expect_data(ctx, "List")?;
                 Ty::Data(list_id, vec![primitive("Char").into()]).into()
@@ -375,11 +371,11 @@ impl Lower for ast::Decl {
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Def;
-        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
+        println!("lowering decl: {}", self.name.pretty_string(ctx.ast));
         let name = self.name.raw;
-        if !ctx.core.builtins.contains(&name) {
+        let Some(var_id) = ctx.ast.id_var_ids.get(&self.name.id.unwrap()).copied() else {
             return Ok(None);
-        }
+        };
 
         let ty = self.ty.lower(ctx)?;
         Ok(Some(Def::new_builtin(var_id, ty)))

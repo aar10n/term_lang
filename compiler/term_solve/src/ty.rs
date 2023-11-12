@@ -98,12 +98,12 @@ pub fn unify(ctx: &mut Context<'_>, t1: Ty, t2: Ty, level: usize) -> diag::Resul
         }
         (Poly(_), _) | (_, Poly(_)) => panic!("unexpected poly_var in type"),
         (t1, t2) => {
-            println!(
-                "expected type `{}`, found `{}`",
-                t1.pretty_string(ctx.core),
-                t2.pretty_string(ctx.core),
-            );
-            panic!();
+            // println!(
+            //     "expected type `{}`, found `{}`",
+            //     t1.pretty_string(ctx.core),
+            //     t2.pretty_string(ctx.core),
+            // );
+            // panic!();
 
             return Err(format!(
                 "expected type `{}`, found `{}`",

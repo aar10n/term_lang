@@ -4,10 +4,13 @@ builtin_sub_int : Int -> Int -> Int
 builtin_put_char : Char -> () ~ Except'IOError
 builtin_get_char : () -> Char ~ Except'IOError 
 
+data Bool = True | False;
+
 data List : a =
     | Nil
     | Cons a (List'a)
     ;
+
 
 
 class Num : a

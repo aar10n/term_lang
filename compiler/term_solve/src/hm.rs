@@ -7,10 +7,22 @@ use constraint::cs;
 use core::*;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
+use ustr::Ustr;
 
 use either::*;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    iter::zip,
+};
 
+/// Infers the type of an expression. Returns the inferred type and updated expression.
+///
+/// This is an implementation of the Hindley-Milner type inference algorithm extended
+/// to support algebraic effects. It not only infers the complete type of an expression,
+/// but also may transform the expression to insert implicit casts and coercions, and
+/// resolve ambiguous symbols.
+///
+/// *Note:* The returned type is not generalized.
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<(Expr, TyE)> {
     use self::Bind::*;
     use self::Expr::*;
@@ -22,9 +34,8 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
     let tab = TABWIDTH.repeat(level);
     let ttab = TABWIDTH.repeat(level + 1);
     let result = match e {
-        Type(box t) => (Expr::unit(), t),
         Lit(l) => {
-            let t = TyE::pure(l.as_ty());
+            let t = TyE::pure(l.as_ty(&ctx.core));
             (Lit(l), t)
         }
         Sym(s) => (Sym(s), TyE::simple(ctx.new_ty_var(), ctx.new_ef_var())),
@@ -77,7 +88,18 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             trace_println!(ctx, "{tab}[var] done: {}", e_t.pretty_string(ctx.core));
             (Var(id), e_t)
         }
+        Type(box t) => (Expr::Type(t.clone().into()), t),
 
+        Cast(box e, box t) => {
+            trace_println!(
+                ctx,
+                "{tab}[cast] solving: {} : {}",
+                e.pretty_string(ctx.core),
+                t.pretty_string(ctx.core)
+            );
+
+            todo!()
+        }
         Apply(..) => {
             let (e, args) = e.uncurry_apply();
             trace_println!(
@@ -98,7 +120,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 );
 
                 let (e, t) = algorithmj(ctx, e, level + 2)?;
-                trace_println!(ctx, "{ttab}[arg] arg done: {}", t.pretty_string(ctx.core));
+                trace_println!(ctx, "{ttab}[arg] arg: {}", t.pretty_string(ctx.core));
                 let (t, f) = t.split_ef();
                 es.push(e);
                 ts.push(t);
@@ -106,53 +128,20 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             }
 
             let res_t = TyE::pure(ctx.new_ty_var());
-            let f_t = TyE::nary_func(ts, res_t.clone());
-
-            let e = if e.is_sym() && let Sym(s) = e.clone().unwrap_inner() {
-                // here we have to resolve the ambiguous symbol to a function.
-                // we do this by checking the expected signature against those
-                // of all the implementations registered for the symbol.
-                let mut res = Right(vec![]);
-                for (id, _) in ctx.core.functions[&s].clone() {
-                    let Right(mut errs) = res else {
-                        break;
-                    };
-
-                    let method_ty = {
-                        let def = ctx.core.defs[&id].clone();
-                        let def = def.borrow();
-                        instantiate(ctx, def.ty.clone(), &mut HashMap::default())
-                    };
-
-                    res = match unify(ctx, f_t.clone(), method_ty, level+1) {
-                        Ok(ty) => Left(id),
-                        Err(err) => {
-                            errs.push(err);
-                            Right(errs)
-                        },
-                    };
-                }
-                
-                let id = match res {
-                    Left(id) => id,
-                    Right(mut errs) => {
-                        return if errs.len() == 1 {
-                            errs.pop().unwrap().into_err()
-                        } else {
-                            format!("ambiguous symbol: `{}`", s).into_err()
-                        };
-                    },
-                };
-                Expr::Var(id)
+            let (e, es, ts) = if e.is_sym() && let Sym(s) = e.clone().unwrap_inner() {
+                trace_println!(ctx, "{ttab}[app] resolving func: {}", s);
+                let (id, es, ts) = resolve_symbol(ctx, s, zip(es, ts), res_t.clone(), level + 2)?;
+                trace_println!(ctx, "{ttab}[app] resolved {} to {}", s, id.pretty_string(ctx.core));
+                (Expr::Var(id), es, ts)
             } else {
-                e
+                (e, es, ts)
             };
 
             let (e, t) = algorithmj(ctx, e, level + 1)?;
             let (t, f) = t.split_ef();
             fs.insert(f);
 
-            let f_t = unify(ctx, t, f_t, level + 1)?;
+            let f_t = unify(ctx, t, TyE::nary_func(ts, res_t.clone()), level + 1)?;
             let res_t = update(ctx, res_t.with_ef(Ef::from(fs)));
             let res_e = Expr::apply_n(e, es);
             trace_println!(ctx, "{tab}[app] done: {}", res_t.pretty_string(ctx.core));
@@ -476,14 +465,65 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
     Ok(result)
 }
 
-pub fn solve_pat(
+/// Resolves an ambiguous symbol to an implementation.
+///
+/// This function attempts to find a function to satsify the given arguments,
+/// possibly performing type coercion if necessary. It first checks the expected
+/// signature against the registered implementations. Then it looks for any
+/// conversions that can be applied to the arguments to satisfy the signature.
+fn resolve_symbol(
+    ctx: &mut Context<'_>,
+    name: Ustr,
+    args: impl IntoIterator<Item = (Expr, TyE)>,
+    res_t: TyE,
+    level: usize,
+) -> diag::Result<(VarId, Vec<Expr>, Vec<TyE>)> {
+    let tab = TABWIDTH.repeat(level);
+    let (mut es, mut ts): (Vec<_>, Vec<_>) = args.into_iter().unzip();
+    let f_t = TyE::nary_func(ts.clone(), res_t.clone());
+
+    let mut errs = vec![];
+    for (id, _) in ctx.core.functions[&name].clone() {
+        trace_println!(ctx, "{tab}trying: {}", id.pretty_string(ctx.core));
+        let method_ty = {
+            let def = ctx.core.defs[&id].clone();
+            let def = def.borrow();
+            instantiate(ctx, def.ty.clone(), &mut HashMap::default())
+        };
+
+        let err = match unify(ctx, f_t.clone(), method_ty, level + 1) {
+            Ok(ty) => return Ok((id, es, ts)),
+            Err(err) => err,
+        };
+        errs.push(err);
+    }
+
+    match &mut ts[..] {
+        [t1, t2] => {
+            // look for a conversion from t1 to t2
+        }
+        _ => {}
+    }
+
+    if errs.len() == 1 {
+        errs.pop().unwrap().into_err()
+    } else {
+        format!("no matching implementation found for `{}`", name).into_err()
+    }
+}
+
+/// Solves the type of a pattern expression. Returns the expected type and a list
+/// of variable bindings produced by the pattern.
+///
+/// The provided expression must be a valid pattern expression.
+fn solve_pat(
     ctx: &mut Context<'_>,
     p: &Expr,
     level: usize,
 ) -> diag::Result<(Ty, Vec<(Expr, TyE)>)> {
     use Expr::*;
     match p {
-        Lit(l) => Ok((l.as_ty(), vec![])),
+        Lit(l) => Ok((l.as_ty(&ctx.core), vec![])),
         Var(id) => {
             let v = ctx.new_ty_var();
             Ok((v.clone(), vec![(Expr::Var(*id), TyE::pure(v))]))
@@ -537,28 +577,7 @@ pub fn solve_pat(
     }
 }
 
-pub fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
-    use Ef::*;
-    Ok(match f {
-        Effect(ef_id, ts) => {
-            let effect = ctx.core.effects.get(ef_id).cloned().unwrap();
-            let effect = effect.borrow();
-            let mut t = instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
-            t
-        }
-        Union(fs) => {
-            // TODO: lower all effects and create a handler super-type by
-            // combining all the records into one.
-            format!("invalid effect pattern: `{}`", f.pretty_string(ctx.core)).into_err()?
-        }
-        _ => return format!("expected effect, found `{}`", f.pretty_string(ctx.core)).into_err(),
-    })
-}
-
-//
-//
-
-pub fn solve_constraints(
+fn solve_constraints(
     ctx: &mut Context<'_>,
     mut cs: Vec<Constraint>,
 ) -> diag::Result<Vec<Constraint>> {
@@ -580,6 +599,27 @@ pub fn solve_constraints(
     }
     Ok(open)
 }
+
+fn solve_handler_ty(ctx: &mut Context<'_>, f: &Ef) -> diag::Result<TyE> {
+    use Ef::*;
+    Ok(match f {
+        Effect(ef_id, ts) => {
+            let effect = ctx.core.effects.get(ef_id).cloned().unwrap();
+            let effect = effect.borrow();
+            let mut t = instantiate(ctx, effect.handler_ty.clone(), &mut HashMap::default());
+            t
+        }
+        Union(fs) => {
+            // TODO: lower all effects and create a handler super-type by
+            // combining all the records into one.
+            format!("invalid effect pattern: `{}`", f.pretty_string(ctx.core)).into_err()?
+        }
+        _ => return format!("expected effect, found `{}`", f.pretty_string(ctx.core)).into_err(),
+    })
+}
+
+//
+//
 
 pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Result<TyE> {
     let t1 = cannonicalize(ctx, t1);

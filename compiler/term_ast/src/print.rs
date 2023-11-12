@@ -115,10 +115,6 @@ impl PrettyPrint<Context> for TyKind {
             TyKind::Infer => write!(out, "{BLUE}?{RESET}"),
             TyKind::Never => write!(out, "{BLUE}never{RESET}"),
             TyKind::Unit => write!(out, "{BLUE}(){RESET}"),
-            TyKind::Int => write!(out, "{BOLD}{BLUE}Int{RESET}"),
-            TyKind::Float => write!(out, "{BOLD}{BLUE}Float{RESET}"),
-            TyKind::Bool => write!(out, "{BOLD}{BLUE}Bool{RESET}"),
-            TyKind::Char => write!(out, "{BOLD}{BLUE}Char{RESET}"),
             TyKind::String => write!(out, "{BLUE}String{RESET}"),
             TyKind::Name(n) => write!(out, "{}", n.pretty_string(ctx)),
             TyKind::Inst(n, ts) => {
