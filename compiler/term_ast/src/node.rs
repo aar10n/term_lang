@@ -2,7 +2,7 @@ use crate as ast;
 use term_common as common;
 use term_print as print;
 
-use ast::{Context, Expr, Ty, VarDecl};
+use ast::{Context, Decl, Expr, Ty};
 use common::span::{Span, Spanned};
 use print::PrettyPrint;
 

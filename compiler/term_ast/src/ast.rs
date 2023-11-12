@@ -2,15 +2,16 @@ use crate::{node, Context};
 use term_common as common;
 use term_core as core;
 
-use common::{declare_id, declare_union_id, impl_spanned};
+use common::{declare_id, declare_union_id};
 pub use common::{
+    id::Identifiable,
     span::{Span, Spanned},
     P,
 };
-use core::{DeclId, EffectId, EffectOpId, Id, InstId, VarId};
+use core::{ClassId, DataId, DeclId, EffectId, EffectOpId, HandlerId, Id, InstId, VarId};
 pub use node::Node;
 
-pub use either::{Either, Either::*};
+pub use either::*;
 use std::ops::Deref;
 use ustr::{ustr, Ustr};
 
@@ -28,17 +29,17 @@ pub enum ItemKind {
     /// A meta command.
     Command(Ustr, String /*args*/),
     /// A data type declaration.
-    DataDecl(P<DataDecl>),
+    DataDecl(Either<DataDecl, DataId>),
     /// An effect type declaration.
-    EffectDecl(P<EffectDecl>),
+    EffectDecl(Either<EffectDecl, EffectId>),
     /// An effect handler.
-    EffectHandler(P<EffectHandler>),
+    EffectHandler(Either<EffectHandler, HandlerId>),
     /// A type class declaration.
-    ClassDecl(P<ClassDecl>),
+    ClassDecl(Either<ClassDecl, ClassId>),
     /// A type class instance declaration.
-    ClassInst(P<ClassInst>),
-    /// A variable type declaration.
-    VarDecl(Either<VarDecl, DeclId>),
+    ClassInst(Either<ClassInst, InstId>),
+    /// A declaration.
+    Decl(Either<Decl, DeclId>),
     /// An expression.
     Expr(P<Expr>),
 }
@@ -398,9 +399,9 @@ impl EffectOpImpl {
     }
 }
 
-/// A variable declaration.
+/// A name declaration.
 #[derive(Clone, Debug, PartialEq)]
-pub struct VarDecl {
+pub struct Decl {
     /// Variable name.
     pub name: Ident,
     /// Variable type.
@@ -409,7 +410,7 @@ pub struct VarDecl {
     span: Span,
 }
 
-impl VarDecl {
+impl Decl {
     pub fn new(name: Ident, ty: P<Ty>) -> Self {
         Self {
             name,
@@ -509,7 +510,7 @@ pub enum ExprKind {
     /// If expression.
     If(If),
     /// A function binding.
-    Func(Func),
+    Func(Either<Func, VarId>),
     /// An anonymous function.
     Lambda(Lambda),
     /// A variable binding.
@@ -874,25 +875,42 @@ impl UnOp {
     }
 }
 
-impl_spanned!(DataDecl);
-impl_spanned!(DataConDecl);
-impl_spanned!(EffectDecl);
-impl_spanned!(EffectOpDecl);
-impl_spanned!(EffectHandler);
-impl_spanned!(EffectOpImpl);
-impl_spanned!(ClassDecl);
-impl_spanned!(MethodDecl);
-impl_spanned!(ClassInst);
-impl_spanned!(MethodImpl);
-impl_spanned!(VarDecl);
-impl_spanned!(TyParams);
-impl_spanned!(Do);
-impl_spanned!(Case);
-impl_spanned!(CaseAlt);
-impl_spanned!(Handle);
-impl_spanned!(HandleAlt);
-impl_spanned!(If);
-impl_spanned!(Func);
-impl_spanned!(Lambda);
-impl_spanned!(Var);
-impl_spanned!(Ident);
+//
+//
+
+#[rustfmt::skip::macros(impl_identifiable)]
+mod impls {
+    use super::*;
+    use term_common::{impl_identifiable, impl_spanned};
+
+    impl_spanned!(DataDecl);
+    impl_spanned!(DataConDecl);
+    impl_spanned!(ClassDecl);
+    impl_spanned!(MethodDecl);
+    impl_spanned!(ClassInst);
+    impl_spanned!(MethodImpl);
+    impl_spanned!(EffectDecl);
+    impl_spanned!(EffectOpDecl);
+    impl_spanned!(EffectHandler);
+    impl_spanned!(EffectOpImpl);
+    impl_spanned!(Decl);
+    impl_spanned!(TyParams);
+    impl_spanned!(Do);
+    impl_spanned!(Case);
+    impl_spanned!(CaseAlt);
+    impl_spanned!(Handle);
+    impl_spanned!(HandleAlt);
+    impl_spanned!(If);
+    impl_spanned!(Func);
+    impl_spanned!(Lambda);
+    impl_spanned!(Var);
+    impl_spanned!(Ident);
+
+    impl_identifiable!(DataDecl, DataId, |x: &DataDecl| x.name.id.unwrap().data_id());
+    impl_identifiable!(ClassDecl, ClassId, |x: &ClassDecl| x.name.id.unwrap().class_id());
+    impl_identifiable!(ClassInst, InstId, |x: &ClassInst| x.inst_id.unwrap());
+    impl_identifiable!(EffectDecl, EffectId, |x: &EffectDecl| x.name.id.unwrap().effect_id());
+    impl_identifiable!(EffectHandler, HandlerId, |x: &EffectHandler| x.name.id.unwrap().handler_id());
+    impl_identifiable!(Decl, DeclId, |x: &Decl| x.name.id.unwrap().decl_id());
+    impl_identifiable!(Func, VarId, |x: &Func| x.name.id.unwrap().var_id());
+}

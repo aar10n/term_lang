@@ -17,7 +17,7 @@ use term_print::{
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::{fs::write, io};
-use ustr::Ustr;
+use ustr::{Ustr, UstrMap};
 
 impl PrettyPrint<Context> for TyE {
     fn pretty_print<Output: io::Write>(
@@ -431,30 +431,10 @@ impl PrettyPrint<Context> for Effect {
             writeln!(
                 out,
                 "{tab}{ATTR}default:{RESET} {}",
-                default.pretty_string(ctx)
+                default.0.pretty_string(ctx)
             )?;
         }
         writeln!(out, "{:-^1$}", "", 80)?;
-        Ok(())
-    }
-}
-
-impl PrettyPrint<Context> for HashMap<Expr, TyE> {
-    fn pretty_print<Output: io::Write>(
-        &self,
-        out: &mut Output,
-        ctx: &Context,
-        level: usize,
-    ) -> io::Result<()> {
-        let tab = TABWIDTH.repeat(level);
-        for (e, ty) in self {
-            writeln!(
-                out,
-                "{tab}{} {ARROW} {}",
-                e.pretty_string(ctx),
-                ty.pretty_string(ctx)
-            )?;
-        }
         Ok(())
     }
 }
@@ -487,7 +467,51 @@ impl<Ctx> PrettyPrint<Ctx> for Context {
             write_bulleted(out, self, &defs, 0)?;
         }
         writeln!(out, "{:-^1$}", "", 80)?;
+        Ok(())
+    }
+}
 
+impl PrettyPrint<Context> for HashMap<Expr, TyE> {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        for (e, ty) in self {
+            writeln!(
+                out,
+                "{tab}{} {ARROW} {}",
+                e.pretty_string(ctx),
+                ty.pretty_string(ctx)
+            )?;
+        }
+        Ok(())
+    }
+}
+
+impl PrettyPrint<Context> for UstrMap<Vec<(VarId, InstId)>> {
+    fn pretty_print<Output: io::Write>(
+        &self,
+        out: &mut Output,
+        ctx: &Context,
+        level: usize,
+    ) -> io::Result<()> {
+        let tab = TABWIDTH.repeat(level);
+        for (name, impls) in self {
+            let sigs = impls
+                .iter()
+                .map(|(id, inst)| {
+                    let def = ctx.defs[id].clone();
+                    let def = def.borrow();
+                    def.ty.pretty_string(ctx)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+
+            writeln!(out, "{tab}{} {ARROW} {}", name, sigs)?;
+        }
         Ok(())
     }
 }
@@ -514,6 +538,7 @@ impl_pretty_print_for_id!(DeclId);
 impl_pretty_print_for_id!(DataId);
 impl_pretty_print_for_id!(DataConId);
 impl_pretty_print_for_id!(EffectId);
+impl_pretty_print_for_id!(HandlerId);
 impl_pretty_print_for_id!(InstId);
 // impl_pretty_print_for_id!(MonoVarId);
 impl_pretty_print_for_id!(PolyVarId);

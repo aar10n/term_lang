@@ -302,7 +302,7 @@ peg::parser! {
             // if expression
             i:if_else() { ExprKind::If(i.into()) }
             // function expression
-            f:func() { ExprKind::Func(f) }
+            f:func() { ExprKind::Func(Left(f)) }
             // function expression
             l:lambda() { ExprKind::Lambda(l) }
             // variable expression
@@ -433,8 +433,8 @@ peg::parser! {
             }
         >)
 
-        pub rule var_decl() -> VarDecl =
-            span(<n:ident() _ ":" _ t:ty() { VarDecl::new(n, t) }>)
+        pub rule var_decl() -> Decl =
+            span(<n:ident() _ ":" _ t:ty() { Decl::new(n, t) }>)
 
         rule command() -> (Ustr, String) =
             ":" cmd:$(['a'..='z'|'A'..='Z'|'_']+) __ rest:(x:$((!eol() [_])+) {x}) {
@@ -443,12 +443,12 @@ peg::parser! {
 
         pub rule item() -> Item = node(<
             c:command() { ItemKind::Command(c.0, c.1) } /
-            d:data_decl() { ItemKind::DataDecl(d.into()) } /
-            e:effect_decl() { ItemKind::EffectDecl(e.into()) } /
-            h:effect_handler() { ItemKind::EffectHandler(h.into()) } /
-            c:class_decl() { ItemKind::ClassDecl(c.into()) } /
-            i:class_inst() { ItemKind::ClassInst(i.into()) } /
-            v:var_decl() { ItemKind::VarDecl(Left(v.into())) } /
+            d:data_decl() { ItemKind::DataDecl(Left(d.into())) } /
+            e:effect_decl() { ItemKind::EffectDecl(Left(e.into())) } /
+            h:effect_handler() { ItemKind::EffectHandler(Left(h.into())) } /
+            c:class_decl() { ItemKind::ClassDecl(Left(c.into())) } /
+            i:class_inst() { ItemKind::ClassInst(Left(i.into())) } /
+            v:var_decl() { ItemKind::Decl(Left(v.into())) } /
             e:expr() { ItemKind::Expr(e) }
         >)
 

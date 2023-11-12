@@ -8,6 +8,7 @@ use core::*;
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString, TABWIDTH};
 
+use either::*;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<(Expr, TyE)> {
@@ -38,6 +39,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 ctx.typ_env.insert(Expr::Var(id), t.clone());
                 (d.body.clone(), t)
             } else {
+                // TODO: better error handling/reporting
                 println!("-------");
                 ctx.typ_env.print_stdout(&ctx.core);
                 println!("-------");
@@ -106,11 +108,46 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
             let res_t = TyE::pure(ctx.new_ty_var());
             let f_t = TyE::nary_func(ts, res_t.clone());
 
-            // this is the point where we resolve ambiguous symbols to a concrete
-            // implementation based on the arguments.
             let e = if e.is_sym() && let Sym(s) = e.clone().unwrap_inner() {
-                println!("{} | {}", s, f_t.pretty_string(ctx.core));
-                panic!();
+                // here we have to resolve the ambiguous symbol to a function.
+                // we do this by checking the expected signature against those
+                // of all the implementations registered for the symbol.
+                println!("---> {} | {}", s, f_t.pretty_string(ctx.core));
+
+                let mut res = Right(vec![]);
+                for (id, _) in ctx.core.functions[&s].clone() {
+                    let Right(mut errs) = res else {
+                        break;
+                    };
+
+                    let method_ty = {
+                        let def = ctx.core.defs[&id].clone();
+                        let def = def.borrow();
+                        instantiate(ctx, def.ty.clone(), &mut HashMap::default())
+                    };
+
+                    res = match unify(ctx, f_t.clone(), method_ty, level+1) {
+                        Ok(ty) => Left(id),
+                        Err(err) => {
+                            errs.push(err);
+                            Right(errs)
+                        },
+                    };
+                }
+                
+                let id = match res {
+                    Left(id) => id,
+                    Right(mut errs) => {
+                        return if errs.len() == 1 {
+                            errs.pop().unwrap().into_err()
+                        } else {
+                            format!("ambiguous symbol: `{}`", s).into_err()
+                        };
+                    },
+                };
+
+                println!("---> RESOLVED: {}", id.pretty_string(ctx.core));
+                Expr::Var(id)
             } else {
                 e
             };
@@ -268,7 +305,7 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
                 if let Ef::Effect(ef_id, ts) = f {
                     let effect = ctx.core.effects.get(&ef_id).cloned().unwrap();
                     let effect = effect.borrow();
-                    if let Some(var_id) = effect.default {
+                    if let Some((_, var_id)) = effect.default {
                         new_alts.push((Ef::Effect(ef_id, ts), Expr::Var(var_id)));
                     } else {
                         fs.insert(Ef::Effect(ef_id, ts));
@@ -555,7 +592,7 @@ pub fn unify(ctx: &mut Context<'_>, t1: TyE, t2: TyE, level: usize) -> diag::Res
         return Ok(t1);
     }
 
-    let tab = "  ".repeat(level);
+    // let tab = "  ".repeat(level);
     // debug_println!(
     //     ctx,
     //     "{tab}unify: {} = {}",

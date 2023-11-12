@@ -6,5 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+term_print = { path = "../term_print" }
+
 paste = "1.0.14"
 ustr = "0.10.0"

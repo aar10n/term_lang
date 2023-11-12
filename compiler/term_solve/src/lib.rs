@@ -7,7 +7,6 @@ mod context;
 pub mod ef;
 pub mod hm;
 pub mod print;
-pub mod topo_sort;
 pub mod ty;
 pub mod type_env;
 pub mod union_find;
@@ -21,7 +20,6 @@ use constraint::cs;
 use core::{Constraint, Ef, Expr, MonoVarId, PolyVarId, Ty, TyE, VarId};
 use diag::{Diagnostic, IntoDiagnostic};
 use term_print::{PrettyPrint, PrettyString};
-use topo_sort::TopologicalSort;
 use type_env::TypeEnv;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -49,24 +47,6 @@ pub fn satisfy(
     let mut ctx = Context::new(core, trace);
     let t = hm::unify(&mut ctx, t, e_t, 0)?;
     Ok((e, t))
-}
-
-/// Sorts the dependency graph returning a list of variable ids in dependency order.
-pub fn sort_dependencies(dep_graph: &BTreeMap<VarId, BTreeSet<VarId>>) -> Vec<VarId> {
-    let mut topo = TopologicalSort::<VarId>::new();
-    for (id, depends_on) in dep_graph {
-        topo.declare_item(*id);
-        for dep_id in depends_on {
-            topo.add_dependency(dep_id.clone(), id.clone());
-        }
-    }
-
-    let mut out = vec![];
-    while let mut deps = topo.pop() && !deps.is_empty() {
-        deps.sort();
-        out.extend(deps);
-    }
-    out
 }
 
 macro_rules! trace_println {

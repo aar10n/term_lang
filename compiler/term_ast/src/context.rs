@@ -1,39 +1,35 @@
-use crate::ast;
-use term_common as common;
+use crate::*;
+use term_common::RcRef;
 use term_core as core;
 
-use ast::{EffectDecl, Expr, Ty, VarDecl};
-use common::declare_union_id;
-use core::{DataConId, DeclId, EffectId, EffectOpId, HandlerId, Id, InstId, Span, VarId};
+use ast::{Decl, EffectDecl, Expr, Ty};
+use core::{
+    ClassId, DataConId, DataId, DeclId, EffectId, EffectOpId, HandlerId, Id, InstId, Span, VarId,
+};
 
-use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 use ustr::{Ustr, UstrMap, UstrSet};
 
 /// An AST context.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Context {
-    pub ambiguous_names: UstrSet,
-    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
-    pub method_ids: BTreeSet<VarId>,
+    pub datas: BTreeMap<DataId, RcRef<DataDecl>>,
+    pub classes: BTreeMap<ClassId, RcRef<ClassDecl>>,
+    pub insts: BTreeMap<InstId, RcRef<ClassInst>>,
+    pub effects: BTreeMap<EffectId, RcRef<EffectDecl>>,
+    pub handlers: BTreeMap<HandlerId, RcRef<EffectHandler>>,
+    pub decls: BTreeMap<DeclId, RcRef<Decl>>,
+    pub funcs: BTreeMap<VarId, RcRef<Func>>,
 
-    pub decls: BTreeMap<DeclId, Rc<RefCell<VarDecl>>>,
+    pub dep_graph: BTreeMap<VarId, BTreeSet<VarId>>,
     pub id_var_ids: BTreeMap<Id, VarId>,
     pub var_decl_ids: BTreeMap<VarId, DeclId>,
+    pub method_ids: BTreeSet<(VarId, InstId)>,
 }
 
 impl Context {
     pub fn new() -> Self {
-        Self {
-            ambiguous_names: UstrSet::default(),
-            dep_graph: BTreeMap::default(),
-            method_ids: BTreeSet::default(),
-
-            decls: BTreeMap::default(),
-            id_var_ids: BTreeMap::default(),
-            var_decl_ids: BTreeMap::default(),
-        }
+        Self::default()
     }
 }

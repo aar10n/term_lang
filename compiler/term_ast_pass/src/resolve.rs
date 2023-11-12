@@ -23,7 +23,7 @@ struct ResolveVisitor<'ctx> {
     core: &'ctx mut core::Context,
 
     scopes: Vec<Scope>,
-    scope_id: Option<Id>,
+    scope_id: Vec<Id>,
     current_var: Option<VarId>,
 }
 
@@ -34,9 +34,13 @@ impl<'ctx> ResolveVisitor<'ctx> {
             core,
 
             scopes: vec![Scope::default()],
-            scope_id: None,
+            scope_id: vec![],
             current_var: None,
         }
+    }
+
+    pub fn scope_id(&self) -> Option<Id> {
+        self.scope_id.last().copied()
     }
 
     pub fn scope(&self) -> &Scope {
@@ -207,20 +211,44 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         let s = self.scopes.pop();
     }
 
+    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
+        self.visit_class_ident(&mut inst.class)?;
+        let id = inst.inst_id.unwrap();
+
+        self.scope_id.push(id.into());
+        inst.walk(self)?;
+        self.scope_id.pop();
+        Ok(())
+    }
+
+    fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
+        let inst_id = self.scope_id().unwrap().inst_id();
+        let var_id = method.name.id.unwrap().var_id();
+        self.ast.dep_graph.insert(var_id, BTreeSet::new());
+        self.ast.method_ids.insert((var_id, inst_id));
+
+        self.scope_id.push(inst_id.into());
+        method.walk(self)?;
+        self.scope_id.pop();
+        Ok(())
+    }
+
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
         self.visit_effect_ident(&mut handler.effect)?;
         self.visit_handler_ident(&mut handler.name)?;
 
-        let current_scope = self.scope_id;
-        self.scope_id = handler.effect.id;
+        let han_id = handler.name.id.unwrap().handler_id();
+        handler.name.id = Some(han_id.into());
+
+        self.scope_id.push(handler.effect.id.unwrap());
         handler.ty_args.visit(self)?;
         handler.ops.visit(self)?;
-        self.scope_id = current_scope;
+        self.scope_id.pop();
         Ok(())
     }
 
     fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> diag::Result<()> {
-        let effect_id = self.scope_id.unwrap().effect_id();
+        let effect_id = self.scope_id().unwrap().effect_id();
         let op_id = self
             .resolve_scoped("operation", effect_id, &mut op.name, Id::is_effect_op)?
             .effect_op_id();
@@ -230,43 +258,20 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
         op.expr.visit(self)
     }
 
-    fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let id = inst.inst_id.unwrap();
-        self.visit_class_ident(&mut inst.class)?;
-
-        let current_scope = self.scope_id;
-        self.scope_id = Some(id.into());
-        inst.walk(self)?;
-        self.scope_id = current_scope;
-        Ok(())
-    }
-
-    fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
-        let inst_id = self.scope_id.unwrap().inst_id();
-        let id = method.name.id.unwrap().var_id();
-        self.ast.dep_graph.insert(id, BTreeSet::new());
-
-        let current_scope = self.scope_id;
-        self.scope_id = Some(id.into());
-        method.walk(self)?;
-        self.scope_id = current_scope;
-        Ok(())
-    }
-
     fn visit_func(&mut self, func: &mut Func) -> diag::Result<()> {
-        // if self.scopes.len() > 1 {
-        //     return Ok(());
-        // }
-
-        let id = func.name.id.unwrap().var_id();
+        let var_id = func.name.id.unwrap().var_id();
         if let Some(parent_id) = self.current_var {
-            self.ast.dep_graph.entry(parent_id).or_default().insert(id);
+            self.ast
+                .dep_graph
+                .entry(parent_id)
+                .or_default()
+                .insert(var_id);
         } else {
-            self.ast.dep_graph.insert(id, BTreeSet::new());
+            self.ast.dep_graph.insert(var_id, BTreeSet::new());
         }
 
         let current_var = self.current_var;
-        self.current_var = Some(id);
+        self.current_var = Some(var_id);
         func.walk(self)?;
         self.current_var = current_var;
         Ok(())
@@ -366,7 +371,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for ResolveVisitor<'ctx> {
 
             ident.id = Some(id.into());
             Ok(())
-        } else if self.ast.ambiguous_names.contains(&ident.raw) {
+        } else if self.core.functions.contains_key(&ident.raw) {
             // ambiguous - resolve during type solving
             ident.id = None;
             Ok(())

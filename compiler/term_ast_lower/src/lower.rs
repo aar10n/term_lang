@@ -1,19 +1,20 @@
 use super::Context;
 use term_ast as ast;
 use term_ast::visit::{Visit, Visitor};
+use term_common as common;
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
-use ast::Spanned;
+use ast::{Either, Left, Right, Spanned};
 use core::{DataConId, DataId, EffectOpId, Id, PolyVarId, Span, TyE, VarId};
 use diag::{error_for, Diagnostic, IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
-use std::cell::RefCell;
+
 use std::f32::consts::E;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::vec;
 use ustr::{ustr, Ustr, UstrMap};
 
 pub trait Lower {
@@ -203,17 +204,14 @@ impl Lower for ast::MethodDecl {
 }
 
 impl Lower for ast::ClassInst {
-    type Target = (core::ClassId, core::Def, Vec<core::Def>);
+    type Target = (BTreeMap<Ustr, VarId>, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
-        // Lowering ast::ClassInst involves representing the instance as a core::Expr
-        // record which maps the member names to definitions. The first definition
-        // returned contains the instance record itself, and the vector of defs
-        // contains the lifted definitions for all member functions.
         use ast::MemberImplKind;
         use core::{Constraint, Def, Expr};
-        let class_id = unwrap_resolved_ident(&self.class)?.class_id();
-        let id = ctx.ast.id_var_ids[&self.inst_id.unwrap().into()];
+        let inst_id = self.inst_id.unwrap();
+        let class_id = self.class.id.unwrap().class_id();
+
         let (ts, mut cs) = self.ty_args.lower(ctx)?;
         cs.insert(0, Constraint::Class(class_id, ts));
 
@@ -224,16 +222,14 @@ impl Lower for ast::ClassInst {
                 MemberImplKind::AssocTy(..) => todo!(),
                 MemberImplKind::Method(method) => {
                     let (name, def) = method.lower(ctx)?;
-                    entries.push((name, Expr::Var(def.id)));
+                    entries.push((name, def.id));
                     defs.push(def);
                 }
             }
         }
 
-        let body = Expr::record(entries);
-        let ty = TyE::infer().with_cs(cs);
-        let def = Def::new(id, ty, body);
-        Ok((class_id, def, defs))
+        let members = BTreeMap::from_iter(entries);
+        Ok((members, defs))
     }
 }
 
@@ -336,24 +332,21 @@ impl Lower for ast::EffectOpDecl {
 }
 
 impl Lower for ast::EffectHandler {
-    type Target = (core::EffectId, core::Def, Vec<core::Def>);
+    type Target = (BTreeMap<Ustr, VarId>, Vec<core::Def>);
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::{Def, Expr};
-        let effect_id = unwrap_resolved_ident(&self.effect)?.effect_id();
-        let var_id = ctx.ast.id_var_ids[&self.name.id.unwrap()];
 
         let mut defs = vec![];
         let mut entries = vec![];
         for op in &self.ops {
             let (name, def) = op.lower(ctx)?;
-            entries.push((name, Expr::Var(def.id)));
+            entries.push((name, def.id));
             defs.push(def);
         }
 
-        let body = Expr::record(entries);
-        let def = Def::new(var_id, TyE::infer(), body);
-        Ok((effect_id, def, defs))
+        let ops = BTreeMap::from_iter(entries);
+        Ok((ops, defs))
     }
 }
 
@@ -375,7 +368,7 @@ impl Lower for ast::EffectOpImpl {
     }
 }
 
-impl Lower for ast::VarDecl {
+impl Lower for ast::Decl {
     type Target = Option<core::Def>;
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
@@ -471,7 +464,14 @@ impl Lower for ast::ExprKind {
             ExprKind::Handle(h) => h.lower(ctx)?,
             ExprKind::Do(b) => b.lower(ctx)?,
             ExprKind::If(i) => i.lower(ctx)?,
-            ExprKind::Func(f) => f.lower(ctx)?,
+            ExprKind::Func(f) => match f {
+                Left(f) => f.lower(ctx)?,
+                Right(id) => {
+                    let func = ctx.ast.funcs.get(id).cloned().unwrap();
+                    let func = func.borrow();
+                    func.lower(ctx)?
+                }
+            },
             ExprKind::Lambda(l) => l.lower(ctx)?,
             ExprKind::Var(v) => v.lower(ctx)?,
             ExprKind::List(es) => {

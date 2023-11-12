@@ -51,10 +51,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
 
     fn visit_class_decl(&mut self, class: &mut ClassDecl) -> diag::Result<()> {
         let class = class.lower_ast_core(self.ast, self.core)?;
-        for name in class.decls.keys() {
-            self.ast.ambiguous_names.insert(name.clone());
-        }
-
         self.core
             .classes
             .insert(class.id, RefCell::new(class).into());
@@ -62,12 +58,15 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     }
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
-        let (class_id, inst_def, defs) = inst.lower_ast_core(self.ast, self.core)?;
+        let class_id = inst.class.id.unwrap().class_id();
+        let inst_id = inst.inst_id.unwrap();
+        let var_id = self.ast.id_var_ids[&inst_id.into()];
 
+        let (members, defs) = inst.lower_ast_core(self.ast, self.core)?;
         let class = self.core.classes[&class_id].clone();
-        class.borrow_mut().insts.push(inst_def.id);
+        class.borrow_mut().insts.push(inst_id);
 
-        self.register_def(inst_def);
+        self.core.instances.insert(inst_id, members);
         self.register_defs(defs);
         Ok(())
     }
@@ -89,20 +88,23 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     }
 
     fn visit_effect_handler(&mut self, handler: &mut EffectHandler) -> diag::Result<()> {
-        let is_default = handler.default;
-        let (effect_id, han_def, defs) = handler.lower_ast_core(self.ast, self.core)?;
-        if is_default {
+        let effect_id = handler.effect.id.unwrap().effect_id();
+        let han_id = handler.name.id.unwrap().handler_id();
+        let var_id = self.ast.id_var_ids[&han_id.into()];
+
+        let (ops, defs) = handler.lower_ast_core(self.ast, self.core)?;
+        if handler.default {
             let effect = self.core.effects.get(&effect_id).cloned().unwrap();
             let mut effect = effect.borrow_mut();
-            effect.default = Some(han_def.id);
+            effect.default = Some((han_id, var_id));
         }
 
-        self.register_def(han_def);
+        self.core.handlers.insert(han_id, ops);
         self.register_defs(defs);
         Ok(())
     }
 
-    fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
+    fn visit_var_decl(&mut self, var: &mut Decl) -> diag::Result<()> {
         if let Some(def) = var.lower_ast_core(self.ast, self.core)? {
             self.register_def(def);
         }

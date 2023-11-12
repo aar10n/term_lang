@@ -71,7 +71,7 @@ pub trait Visitor<'a, S: Default, E>: Sized {
     fn visit_effect_op_impl(&mut self, op: &mut EffectOpImpl) -> Result<S, E> {
         op.walk(self)
     }
-    fn visit_var_decl(&mut self, var: &mut VarDecl) -> Result<S, E> {
+    fn visit_var_decl(&mut self, var: &mut Decl) -> Result<S, E> {
         var.walk(self)
     }
     fn visit_ty_params(&mut self, ty_params: &mut TyParams) -> Result<S, E> {
@@ -237,12 +237,72 @@ impl Visit for Item {
     fn walk<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         match &mut self.kind {
             ItemKind::Command(_, _) => Ok(S::default()),
-            ItemKind::DataDecl(data) => data.visit(visitor),
-            ItemKind::EffectDecl(effect) => effect.visit(visitor),
-            ItemKind::EffectHandler(handler) => handler.visit(visitor),
-            ItemKind::ClassDecl(class) => class.visit(visitor),
-            ItemKind::ClassInst(inst) => inst.visit(visitor),
-            ItemKind::VarDecl(decl) => match decl {
+            ItemKind::DataDecl(data) => match data {
+                Left(data) => data.visit(visitor),
+                Right(id) => {
+                    let data = visitor
+                        .context()
+                        .datas
+                        .get(id)
+                        .expect("invalid data node id")
+                        .to_owned();
+                    let mut data = RefCell::borrow_mut(&data);
+                    data.visit(visitor)
+                }
+            },
+            ItemKind::EffectDecl(effect) => match effect {
+                Left(effect) => effect.visit(visitor),
+                Right(id) => {
+                    let effect = visitor
+                        .context()
+                        .effects
+                        .get(id)
+                        .expect("invalid effect node id")
+                        .to_owned();
+                    let mut effect = RefCell::borrow_mut(&effect);
+                    effect.visit(visitor)
+                }
+            },
+            ItemKind::EffectHandler(handler) => match handler {
+                Left(handler) => handler.visit(visitor),
+                Right(id) => {
+                    let handler = visitor
+                        .context()
+                        .handlers
+                        .get(id)
+                        .expect("invalid handler node id")
+                        .to_owned();
+                    let mut handler = RefCell::borrow_mut(&handler);
+                    handler.visit(visitor)
+                }
+            },
+            ItemKind::ClassDecl(class) => match class {
+                Left(class) => class.visit(visitor),
+                Right(id) => {
+                    let class = visitor
+                        .context()
+                        .classes
+                        .get(id)
+                        .expect("invalid class node id")
+                        .to_owned();
+                    let mut class = RefCell::borrow_mut(&class);
+                    class.visit(visitor)
+                }
+            },
+            ItemKind::ClassInst(inst) => match inst {
+                Left(inst) => inst.visit(visitor),
+                Right(id) => {
+                    let inst = visitor
+                        .context()
+                        .insts
+                        .get(id)
+                        .expect("invalid inst node id")
+                        .to_owned();
+                    let mut inst = RefCell::borrow_mut(&inst);
+                    inst.visit(visitor)
+                }
+            },
+            ItemKind::Decl(decl) => match decl {
                 Left(decl) => decl.visit(visitor),
                 Right(id) => {
                     let decl = visitor
@@ -476,7 +536,7 @@ impl Visit for EffectOpImpl {
     }
 }
 
-impl Visit for VarDecl {
+impl Visit for Decl {
     fn visit<'a, V: Visitor<'a, S, E>, S: Default, E>(&mut self, visitor: &mut V) -> Result<S, E> {
         visitor.visit_var_decl(self)
     }
@@ -553,7 +613,19 @@ impl Visit for Expr {
             ExprKind::Handle(handle) => handle.visit(visitor),
             ExprKind::Do(block) => block.visit(visitor),
             ExprKind::If(if_) => if_.visit(visitor),
-            ExprKind::Func(func) => func.visit(visitor),
+            ExprKind::Func(func) => match func {
+                Left(func) => func.visit(visitor),
+                Right(id) => {
+                    let func = visitor
+                        .context()
+                        .funcs
+                        .get(id)
+                        .expect("invalid effect node id")
+                        .to_owned();
+                    let mut func = RefCell::borrow_mut(&func);
+                    func.visit(visitor)
+                }
+            },
             ExprKind::Lambda(lambda) => lambda.visit(visitor),
             ExprKind::Var(var) => var.visit(visitor),
             ExprKind::List(exprs) => exprs.visit(visitor),

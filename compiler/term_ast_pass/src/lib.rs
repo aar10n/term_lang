@@ -3,6 +3,7 @@
 #![feature(let_chains)]
 #![feature(box_patterns)]
 mod collect;
+mod infer;
 mod lower;
 mod resolve;
 
@@ -17,6 +18,7 @@ use diag::{Diagnostic, IntoDiagnostic, Report};
 use ustr::Ustr;
 
 pub use collect::*;
+pub use infer::*;
 pub use lower::*;
 pub use resolve::*;
 
@@ -79,6 +81,22 @@ impl<T> PassResult<T> {
             PassResult::Ok(r) => Ok(r),
             PassResult::Err(ds) => Err(Report::from(ds)),
         }
+    }
+}
+
+impl<T, I> From<I> for PassResult<T>
+where
+    I: IntoIterator<Item = Result<T, Vec<Diagnostic>>>,
+{
+    fn from(iter: I) -> PassResult<T> {
+        let mut ds = vec![];
+        for r in iter {
+            match r {
+                Ok(r) => return PassResult::Ok(r),
+                Err(mut ds_) => ds.append(&mut ds_),
+            }
+        }
+        PassResult::Err(ds)
     }
 }
 

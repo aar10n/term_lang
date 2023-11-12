@@ -19,9 +19,9 @@ declare_child_id!(DataConId, DataId);
 declare_id!(EffectId);
 /// An effect operation id.
 declare_child_id!(EffectOpId, EffectId);
-/// Effect handler id.
+/// Handler id.
 declare_id!(HandlerId);
-/// Class instance id.
+/// Instance id.
 declare_id!(InstId);
 /// A poly type variable id.
 declare_id!(PolyVarId);
@@ -690,7 +690,7 @@ pub struct Class {
     /// Class declarations.
     pub decls: BTreeMap<Ustr, TyE>,
     /// Class instances.
-    pub insts: Vec<VarId>,
+    pub insts: Vec<InstId>,
 }
 
 impl Class {
@@ -751,7 +751,7 @@ pub struct Effect {
     /// Effect handlers.
     pub handlers: Vec<VarId>,
     /// Default handler.
-    pub default: Option<VarId>,
+    pub default: Option<(HandlerId, VarId)>,
 }
 
 impl Effect {

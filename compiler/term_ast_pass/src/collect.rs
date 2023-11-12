@@ -1,20 +1,20 @@
 use crate::{DuplicateDeclErr, PassResult};
 use term_ast as ast;
 use term_ast_lower as lower;
+use term_common as common;
 use term_core as core;
 use term_diag as diag;
 
 use ast::visit::{Visit, Visitor};
 use ast::*;
-use core::{DeclId, Exclusivity, Id};
+use common::{id::Identifiable, RcRef};
+use core::{ClassId, DeclId, EffectId, Exclusivity, Id};
 use diag::{Diagnostic, IntoDiagnostic, IntoError};
 use term_print::{PrettyPrint, PrettyString};
 
-use std::cell::RefCell;
-use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 use ustr::{ustr, UstrMap};
 
+/// Collects all declarations and registers them in the context.
 struct CollectVisitor<'ctx> {
     ast: &'ctx mut ast::Context,
     core: &'ctx mut core::Context,
@@ -50,18 +50,33 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
 
     fn visit_item(&mut self, item: &mut Item) -> diag::Result<()> {
         item.walk(self)?;
-        match &mut item.kind {
-            ItemKind::VarDecl(decl) => {
-                let id = match decl {
-                    Left(decl) => decl.name.id.unwrap().decl_id(),
-                    Right(_) => return Ok(()),
-                };
 
-                let decl = match std::mem::replace(decl, Right(id)) {
-                    Left(decl) => Rc::new(RefCell::new(decl)),
-                    Right(_) => unreachable!(),
-                };
-                self.ast.decls.insert(id, decl);
+        // lift declaration and definition nodes out of the module and into the ast
+        // context replacing them with an id reference
+        match &mut item.kind {
+            ItemKind::DataDecl(data) => {
+                let data = swap_identifiable_with_id(data);
+                self.ast.datas.insert(data.id(), RcRef::new(data));
+            }
+            ItemKind::ClassDecl(class) => {
+                let class = swap_identifiable_with_id(class);
+                self.ast.classes.insert(class.id(), RcRef::new(class));
+            }
+            ItemKind::ClassInst(inst) => {
+                let inst = swap_identifiable_with_id(inst);
+                self.ast.insts.insert(inst.id(), RcRef::new(inst));
+            }
+            ItemKind::EffectDecl(effect) => {
+                let effect = swap_identifiable_with_id(effect);
+                self.ast.effects.insert(effect.id(), RcRef::new(effect));
+            }
+            ItemKind::EffectHandler(handler) => {
+                let handler = swap_identifiable_with_id(handler);
+                self.ast.handlers.insert(handler.id(), RcRef::new(handler));
+            }
+            ItemKind::Decl(decl) => {
+                let decl = swap_identifiable_with_id(decl);
+                self.ast.decls.insert(decl.id(), RcRef::new(decl));
             }
             _ => {}
         }
@@ -95,7 +110,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
             .register_scoped_name(class_id, id, name, span, Exclusivity::Name)
             .ok_or_duplicate_decl_err(&self.core, "member")?;
 
-        self.ast.ambiguous_names.insert(name);
+        self.core.functions.entry(name).or_default();
         self.all_decls.insert(name, (id, method.span()));
 
         method.name.id = Some(id.into());
@@ -105,7 +120,11 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
 
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
         let id = self.core.ids.next_inst_id();
-        let name = ustr(&inst.ty_args.args.plain_string(&self.ast));
+        let name = ustr(&format!(
+            "{}'{}",
+            inst.class.raw,
+            &inst.ty_args.args.plain_string(&self.ast)
+        ));
         let span = inst.span();
         self.core.register_id_name(id, name, span);
 
@@ -123,6 +142,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
 
     fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
         let inst_id = self.scope_id.unwrap().inst_id();
+        let inst_var_id = self.ast.id_var_ids[&inst_id.into()];
         let id = self.core.ids.next_var_id();
         let name = method.name.raw;
         let span = method.name.span();
@@ -130,7 +150,12 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         self.core
             .register_scoped_name(inst_id, id, name, span, Exclusivity::None)
             .ok_or_duplicate_decl_err(&self.core, "member")?;
-        self.ast.method_ids.insert(id);
+
+        self.core
+            .functions
+            .entry(name)
+            .or_default()
+            .push((id, inst_id));
 
         method.name.id = Some(id.into());
         method.params.visit(self)?;
@@ -251,7 +276,7 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         op.expr.visit(self)
     }
 
-    fn visit_var_decl(&mut self, var: &mut VarDecl) -> diag::Result<()> {
+    fn visit_var_decl(&mut self, var: &mut Decl) -> diag::Result<()> {
         if self.level > 0 {
             return Diagnostic::error(
                 "variable declarations may only occur at the top level",
@@ -404,5 +429,21 @@ impl<T> OkOrDuplicateDeclErr for Result<T, (Span, Id)> {
             }
             .into_err(),
         }
+    }
+}
+
+fn swap_identifiable_with_id<L, R>(e: &mut Either<L, R>) -> L
+where
+    L: Identifiable<Id = R>,
+    R: std::fmt::Debug + Copy + Eq + Ord,
+{
+    let id = match e {
+        Left(l) => l.id(),
+        Right(_) => unreachable!(),
+    };
+
+    match std::mem::replace(e, Right(id)) {
+        Left(l) => l,
+        Right(_) => unreachable!(),
     }
 }

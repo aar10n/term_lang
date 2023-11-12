@@ -1,3 +1,33 @@
+use std::fmt::Debug;
+
+pub trait Identifiable {
+    type Id: Debug + Copy + Eq + Ord;
+    fn id(&self) -> Self::Id;
+}
+
+#[macro_export]
+macro_rules! impl_identifiable {
+    ($name:ident, $id_ty:ty, $($field:ident).+) => {
+        impl $crate::id::Identifiable for $name {
+            type Id = $id_ty;
+
+            fn id(&self) -> Self::Id {
+                self.$($field).+
+            }
+        }
+    };
+    ($name:ident, $id_ty:ty, $func:expr) => {
+        impl $crate::id::Identifiable for $name {
+            type Id = $id_ty;
+
+            fn id(&self) -> Self::Id {
+                let f: fn(&Self) -> Self::Id = $func;
+                $func(self)
+            }
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! declare_id {
     ($name:ident) => {

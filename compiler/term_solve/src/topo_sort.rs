@@ -91,6 +91,7 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
         }
     }
 
+    /// Returns a list of items that have no dependencies.
     pub fn pop(&mut self) -> Vec<T> {
         let mut keys = self
             .top
@@ -105,6 +106,14 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
         keys
     }
 
+    pub fn pop_all(&mut self) -> Vec<T> {
+        let mut res = vec![];
+        while let mut deps = self.pop() && !deps.is_empty() {
+            res.extend(deps);
+        }
+        res
+    }
+
     fn remove(&mut self, prec: &T) -> Option<Dependency<T>> {
         if let Some(ref p) = self.top.remove(prec) {
             for s in &p.succ {
@@ -114,6 +123,22 @@ impl<T: Clone + Ord + Eq> TopologicalSort<T> {
             }
         }
         None
+    }
+}
+
+impl<T> From<&BTreeMap<T, BTreeSet<T>>> for TopologicalSort<T>
+where
+    T: Clone + Ord + Eq,
+{
+    fn from(map: &BTreeMap<T, BTreeSet<T>>) -> Self {
+        let mut topo = Self::new();
+        for (k, v) in map.iter() {
+            topo.declare_item(k.clone());
+            for dep in v {
+                topo.add_dependency(dep.clone(), k.clone());
+            }
+        }
+        topo
     }
 }
 

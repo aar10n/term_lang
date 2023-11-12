@@ -49,27 +49,44 @@ impl PrettyPrint<Context> for ItemKind {
             ItemKind::Command(..) => {
                 writeln!(out, "{tab}{TAG}Command{RESET}")?;
             }
-            ItemKind::DataDecl(data_decl) => {
+            ItemKind::DataDecl(data) => {
                 writeln!(out, "{tab}{TAG}DataDecl{RESET}")?;
-                data_decl.pretty_print(out, ctx, level + 1)?;
+                match data {
+                    Left(data) => data.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.datas[id].borrow().pretty_print(out, ctx, level + 1)?,
+                }
             }
             ItemKind::EffectDecl(effect) => {
                 writeln!(out, "{tab}{TAG}EffectDecl{RESET}")?;
-                effect.pretty_print(out, ctx, level + 1)?
+                match effect {
+                    Left(effect) => effect.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.effects[id].borrow().pretty_print(out, ctx, level + 1)?,
+                }
             }
-            ItemKind::EffectHandler(effect_handler) => {
+            ItemKind::EffectHandler(handler) => {
                 writeln!(out, "{tab}{TAG}EffectHandler{RESET}")?;
-                effect_handler.pretty_print(out, ctx, level + 1)?;
+                match handler {
+                    Left(handler) => handler.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.handlers[id]
+                        .borrow()
+                        .pretty_print(out, ctx, level + 1)?,
+                }
             }
-            ItemKind::ClassDecl(class_decl) => {
+            ItemKind::ClassDecl(class) => {
                 writeln!(out, "{tab}{TAG}ClassDecl{RESET}")?;
-                class_decl.pretty_print(out, ctx, level + 1)?;
+                match class {
+                    Left(class) => class.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.classes[id].borrow().pretty_print(out, ctx, level + 1)?,
+                }
             }
-            ItemKind::ClassInst(class_inst) => {
+            ItemKind::ClassInst(inst) => {
                 writeln!(out, "{tab}{TAG}ClassInst{RESET}")?;
-                class_inst.pretty_print(out, ctx, level + 1)?;
+                match inst {
+                    Left(inst) => inst.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.insts[id].borrow().pretty_print(out, ctx, level + 1)?,
+                }
             }
-            ItemKind::VarDecl(decl) => {
+            ItemKind::Decl(decl) => {
                 writeln!(out, "{tab}{TAG}VarDecl{RESET}")?;
                 match decl {
                     Left(decl) => decl.pretty_print(out, ctx, level + 1)?,
@@ -330,7 +347,7 @@ impl PrettyPrint<Context> for MethodImpl {
         level: usize,
     ) -> io::Result<()> {
         let tab = TABWIDTH.repeat(level);
-        writeln!(out, "{} ", self.name.pretty_string(ctx))?;
+        writeln!(out, "{tab}{} ", self.name.pretty_string(ctx))?;
         if !self.params.is_empty() {
             writeln!(
                 out,
@@ -479,7 +496,7 @@ impl PrettyPrint<Context> for EffectOpImpl {
     }
 }
 
-impl PrettyPrint<Context> for VarDecl {
+impl PrettyPrint<Context> for Decl {
     fn pretty_print<Output: io::Write>(
         &self,
         out: &mut Output,
@@ -644,7 +661,10 @@ impl PrettyPrint<Context> for ExprKind {
             }
             ExprKind::Func(func) => {
                 writeln!(out, "{tab}{TAG}Func{RESET}")?;
-                func.pretty_print(out, ctx, level + 1);
+                match func {
+                    Left(func) => func.pretty_print(out, ctx, level + 1)?,
+                    Right(id) => ctx.funcs[id].borrow().pretty_print(out, ctx, level + 1)?,
+                }
             }
             ExprKind::Lambda(lambda) => {
                 writeln!(out, "{tab}{TAG}Lambda{RESET}")?;
@@ -907,7 +927,12 @@ impl PrettyPrint<Context> for Ident {
     ) -> io::Result<()> {
         if let Some(id) = self.id {
             let (raw, color) = id_to_color(id);
-            write!(out, "{color}{}<{}>{RESET}", self.as_ref(), raw)
+            write!(
+                out,
+                "{color}{}{RESET}<{color}{}{RESET}>",
+                self.as_ref(),
+                raw
+            )
         } else {
             write!(out, "{}", self.as_ref())
         }

@@ -21,6 +21,11 @@ pub struct Context {
     pub defs: BTreeMap<VarId, Rc<RefCell<Def>>>,
     pub classes: BTreeMap<ClassId, Rc<RefCell<Class>>>,
     pub effects: BTreeMap<EffectId, Rc<RefCell<Effect>>>,
+    pub instances: BTreeMap<InstId, BTreeMap<Ustr, VarId>>,
+    pub handlers: BTreeMap<HandlerId, BTreeMap<Ustr, VarId>>,
+
+    pub functions: UstrMap<Vec<(VarId, InstId)>>,
+    pub signatures: HashMap<TyE, Vec<Ustr>>,
     pub typings: HashMap<Expr, TyE>,
 }
 
@@ -39,7 +44,11 @@ impl Context {
             defs: BTreeMap::default(),
             classes: BTreeMap::default(),
             effects: BTreeMap::default(),
+            instances: BTreeMap::default(),
+            handlers: BTreeMap::default(),
 
+            functions: UstrMap::default(),
+            signatures: HashMap::default(),
             typings: HashMap::default(),
         }
     }
@@ -50,6 +59,14 @@ impl Context {
             .get(&id)
             .map(|(name, _)| name.as_str())
             .unwrap_or("<unknown>")
+    }
+
+    pub fn id_as_ustr<T: Into<Id>>(&self, id: T) -> Ustr {
+        let id = id.into();
+        self.id_names
+            .get(&id)
+            .map(|(name, _)| *name)
+            .unwrap_or(ustr::ustr("<unknown>"))
     }
 
     pub fn id_as_span<T: Into<Id>>(&self, id: T) -> Option<Span> {
