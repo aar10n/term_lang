@@ -128,10 +128,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
         let span = inst.span();
         self.core.register_id_name(id, name, span);
 
-        let var_id = self.core.ids.next_var_id();
-        self.core.register_id_name(var_id, name, span);
-        self.ast.id_var_ids.insert(id.into(), var_id);
-
         self.scope_id = Some(id.into());
         inst.inst_id = Some(id.into());
         inst.ty_args.visit(self)?;
@@ -142,15 +138,16 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
 
     fn visit_method_impl(&mut self, method: &mut MethodImpl) -> diag::Result<()> {
         let inst_id = self.scope_id.unwrap().inst_id();
-        let inst_var_id = self.ast.id_var_ids[&inst_id.into()];
         let id = self.core.ids.next_var_id();
         let name = method.name.raw;
+        let vis_name = ustr(&format!("`{}`::{}", name, self.core.id_as_str(inst_id)));
         let span = method.name.span();
 
         self.core
             .register_scoped_name(inst_id, id, name, span, Exclusivity::None)
             .ok_or_duplicate_decl_err(&self.core, "member")?;
 
+        self.core.register_id_name(id, vis_name, span);
         self.core
             .functions
             .entry(name)
@@ -206,9 +203,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for CollectVisitor<'ctx> {
             .register_global_type(id, name, span)
             .ok_or_duplicate_decl_err(self.core, "effect")?;
 
-        let var_id = self.core.ids.next_var_id();
-        self.core.register_id_name(var_id, name, span);
-        self.ast.id_var_ids.insert(id.into(), var_id);
         effect.name.id = Some(id.into());
 
         self.scope_id = Some(id.into());

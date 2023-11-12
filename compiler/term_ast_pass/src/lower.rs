@@ -60,7 +60,6 @@ impl<'ctx> Visitor<'ctx, (), Diagnostic> for LowerVisitor<'ctx> {
     fn visit_class_inst(&mut self, inst: &mut ClassInst) -> diag::Result<()> {
         let class_id = inst.class.id.unwrap().class_id();
         let inst_id = inst.inst_id.unwrap();
-        let var_id = self.ast.id_var_ids[&inst_id.into()];
 
         let (members, defs) = inst.lower_ast_core(self.ast, self.core)?;
         let class = self.core.classes[&class_id].clone();

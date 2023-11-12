@@ -49,9 +49,9 @@ pub fn infer_all<'a>(
     }
     println!("-------------------------------");
 
-    println!("{:-^1$}", "", 80);
+    println!("{:-^1$}", "", 32);
     core.functions.print_stdout(&core);
-    println!("{:-^1$}", "", 80);
+    println!("{:-^1$}", "", 32);
 
     println!(">>> infering function types <<<");
     let method_ids = ast.method_ids.iter().map(|(id, _)| *id).collect::<Vec<_>>();
