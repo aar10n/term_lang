@@ -4,6 +4,7 @@ pub mod ansi;
 #[macro_use]
 pub mod id;
 pub mod dep_graph;
+pub mod ordered_set;
 pub mod source;
 pub mod span;
 
