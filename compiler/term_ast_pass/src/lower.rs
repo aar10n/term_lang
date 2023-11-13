@@ -29,8 +29,9 @@ impl<'ctx> LowerVisitor<'ctx> {
     }
 
     pub fn register_def(&mut self, def: core::Def) {
+        let b = if def.builtin { " (builtin)" } else { "" };
         println!(
-            "registering def {} : {}",
+            "registering def {} : {} {b}",
             def.id.pretty_string(self.core),
             def.ty.pretty_string(self.core)
         );

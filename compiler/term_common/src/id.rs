@@ -34,7 +34,7 @@ macro_rules! declare_id {
         declare_id!($name, usize);
     };
     ($name:ident, $id_ty:ty) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub struct $name {
             pub raw: $id_ty,
         }
@@ -48,6 +48,12 @@ macro_rules! declare_id {
 
             pub fn is_invalid(&self) -> bool {
                 self.raw == <$id_ty>::MAX
+            }
+        }
+
+        impl std::fmt::Debug for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}<{}>", stringify!($name), self.raw)
             }
         }
 

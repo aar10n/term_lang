@@ -35,7 +35,20 @@ pub fn algorithmj(ctx: &mut Context<'_>, e: Expr, level: usize) -> diag::Result<
     let ttab = TABWIDTH.repeat(level + 1);
     let result = match e {
         Lit(l) => {
-            let t = TyE::pure(l.as_ty(&ctx.core));
+            let t = match l {
+                Unit => TyE::pure(Ty::Unit),
+                Bool(_) => ctx.core.get_primitive_ty("Bool"),
+                Char(_) => ctx.core.get_primitive_ty("Char"),
+                Int(_) => {
+                    let (mut ps, cs) = constraint::class_constraint(ctx, "Num", vec![])?;
+                    TyE::pure(ps.pop().unwrap()).with_cs(cs)
+                }
+                Double(_) => {
+                    let (mut ps, cs) = constraint::class_constraint(ctx, "Frac", vec![])?;
+                    TyE::pure(ps.pop().unwrap()).with_cs(cs)
+                }
+            };
+
             (Lit(l), t)
         }
         Sym(s) => (Sym(s), TyE::simple(ctx.new_ty_var(), ctx.new_ef_var())),
@@ -498,17 +511,23 @@ fn resolve_symbol(
         errs.push(err);
     }
 
-    match &mut ts[..] {
-        [t1, t2] => {
-            // look for a conversion from t1 to t2
-        }
-        _ => {}
-    }
+    // match &mut ts[..] {
+    //     [t1, t2] => {
+    //         // look for a conversion from t2 to t1
+    //     }
+    //     _ => {}
+    // }
 
     if errs.len() == 1 {
         errs.pop().unwrap().into_err()
     } else {
-        format!("no matching implementation found for `{}`", name).into_err()
+        let f_t = generalize(ctx, f_t, &mut HashMap::default());
+        format!(
+            "no matching implementation found for `{}` with type `{}`",
+            name,
+            f_t.pretty_string(ctx.core)
+        )
+        .into_err()
     }
 }
 

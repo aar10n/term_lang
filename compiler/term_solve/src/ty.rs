@@ -1,4 +1,5 @@
 use crate::{ef, hm, trace_println, Context};
+use term_common as common;
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
@@ -295,6 +296,10 @@ pub fn subst_ty(r: &Ty, x: &Ty, t: Ty) -> Ty {
         Effectful(box t, f) => Effectful(subst_ty(r, x, t).into(), ef::subst_ty(r, x, f)),
         _ => t,
     }
+}
+
+pub fn subst_tys(r: &Ty, x: &Ty, ts: Vec<Ty>) -> Vec<Ty> {
+    ts.into_iter().map(|t| subst_ty(r, x, t)).collect()
 }
 
 pub fn subst_ef(r: &Ef, x: &Ef, t: Ty) -> Ty {

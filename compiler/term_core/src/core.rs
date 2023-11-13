@@ -671,25 +671,22 @@ pub enum Lit {
     Unit,
     /// Boolean.
     Bool(bool),
-    /// Integer.
-    Int(u64),
-    /// Float.
-    Float(u64 /*f64*/),
     /// Character.
     Char(char),
-    /// Symbolic constant.
-    Symbol(Ustr),
+    /// Integer.
+    Int(u64),
+    /// Double.
+    Double(u64 /*f64*/),
 }
 
 impl Lit {
     pub fn as_ty(&self, ctx: &crate::Context) -> Ty {
         match self {
             Self::Unit => Ty::Unit,
-            Self::Bool(_) => Ty::Data(ctx.get_builtin_type("Bool"), vec![]),
-            Self::Int(_) => Ty::Data(ctx.get_builtin_type("Int"), vec![]),
-            Self::Float(_) => Ty::Data(ctx.get_builtin_type("Float"), vec![]),
-            Self::Char(_) => Ty::Data(ctx.get_builtin_type("Char"), vec![]),
-            Self::Symbol(s) => Ty::Sym(*s),
+            Self::Bool(_) => ctx.get_primitive_ty("Bool").ty,
+            Self::Char(_) => ctx.get_primitive_ty("Char").ty,
+            Self::Int(_) => ctx.get_primitive_ty("Int").ty,
+            Self::Double(_) => ctx.get_primitive_ty("Double").ty,
         }
     }
 }
@@ -703,6 +700,8 @@ impl Lit {
 pub struct Class {
     /// Class id.
     pub id: ClassId,
+    /// Class params.
+    pub ps: Vec<PolyVarId>,
     /// Class constraints.
     pub cs: Vec<Constraint>,
     /// Class declarations.
@@ -712,9 +711,15 @@ pub struct Class {
 }
 
 impl Class {
-    pub fn new(id: ClassId, cs: Vec<Constraint>, decls: BTreeMap<Ustr, TyE>) -> Self {
+    pub fn new(
+        id: ClassId,
+        ps: Vec<PolyVarId>,
+        cs: Vec<Constraint>,
+        decls: BTreeMap<Ustr, TyE>,
+    ) -> Self {
         Self {
             id,
+            ps,
             cs,
             decls,
             insts: vec![],

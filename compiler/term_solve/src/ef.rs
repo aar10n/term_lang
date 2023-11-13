@@ -1,4 +1,5 @@
 use crate::{hm, trace_println, Context};
+use term_common as common;
 use term_core as core;
 use term_diag as diag;
 use term_print as print;

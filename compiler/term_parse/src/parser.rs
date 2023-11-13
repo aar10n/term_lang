@@ -21,10 +21,17 @@ peg::parser! {
             }
 
         rule multiline<T>(r: rule<T>) -> Vec<T> =
-            x:(_ "|" _ x:r() {x})
-            xs:(!(eol()? _ ";") eol() _ "|" _ x:r() {x})* eol()? _ ";" {
-                let mut v = vec![x];
-                v.extend(xs);
+            x:(_ "|" _ x:r()? {x})
+            xs:(!(eol()? _ ";") eol() _ "|" _ x:r()? {x})* eol()? _ ";" {
+                let mut v = vec![];
+                if let Some(x) = x {
+                    v.push(x);
+                }
+                for x in xs {
+                    if let Some(x) = x {
+                        v.push(x);
+                    }
+                }
                 v
             }
 
@@ -104,8 +111,8 @@ peg::parser! {
             expected!("integer")
 
         rule float_lit() -> LitKind = quiet!{
-            d:$("." ['0'..='9']+) { LitKind::Float(d.parse::<f64>().unwrap()) } /
-            d:$(['0'..='9']+ "." ['0'..='9']*) { LitKind::Float(d.parse::<f64>().unwrap()) }} /
+            d:$("." ['0'..='9']+) { LitKind::Double(d.parse::<f64>().unwrap()) } /
+            d:$(['0'..='9']+ "." ['0'..='9']*) { LitKind::Double(d.parse::<f64>().unwrap()) }} /
             expected!("float")
 
         rule char_lit() -> LitKind =

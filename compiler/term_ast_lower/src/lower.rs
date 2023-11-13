@@ -79,7 +79,7 @@ impl Lower for ast::Ty {
             TyKind::Unit => Ty::Unit.into(),
             TyKind::String => {
                 let list_id = expect_data(ctx, "List")?;
-                Ty::Data(list_id, vec![primitive("Char").into()]).into()
+                Ty::Data(list_id, vec![ctx.core.get_primitive_ty("Char")]).into()
             }
             TyKind::Name(n) => match unwrap_resolved_ident(n)? {
                 Id::Data(id) => TyE::pure(Ty::Data(id, vec![])),
@@ -170,7 +170,7 @@ impl Lower for ast::ClassDecl {
         use ast::MemberDeclKind;
         use core::{Class, Def, Expr};
         let id = unwrap_resolved_ident(&self.name)?.class_id();
-        let (_, cs) = self.ty_params.lower(ctx)?;
+        let (ps, cs) = self.ty_params.lower(ctx)?;
 
         let mut entries = vec![];
         for member in &self.members {
@@ -184,7 +184,7 @@ impl Lower for ast::ClassDecl {
         }
 
         let decls = BTreeMap::from_iter(entries);
-        let class = Class::new(id, cs, decls);
+        let class = Class::new(id, ps, cs, decls);
         Ok(class)
     }
 }
@@ -371,7 +371,6 @@ impl Lower for ast::Decl {
 
     fn lower(&self, ctx: &mut Context) -> diag::Result<Self::Target> {
         use core::Def;
-        println!("lowering decl: {}", self.name.pretty_string(ctx.ast));
         let name = self.name.raw;
         let Some(var_id) = ctx.ast.id_var_ids.get(&self.name.id.unwrap()).copied() else {
             return Ok(None);
@@ -728,9 +727,9 @@ pub fn lower_non_string_lit(ctx: &mut Context, kind: &ast::LitKind) -> diag::Res
     match &kind {
         LitKind::Unit => Ok(Lit::Unit),
         LitKind::Bool(b) => Ok(Lit::Bool(*b)),
-        LitKind::Int(i) => Ok(Lit::Int(*i)),
-        LitKind::Float(f) => Ok(Lit::Float(f.to_bits())),
         LitKind::Char(c) => Ok(Lit::Char(*c)),
+        LitKind::Int(i) => Ok(Lit::Int(*i)),
+        LitKind::Double(f) => Ok(Lit::Double(f.to_bits())),
         LitKind::String(s) => panic!("unexpected string literal: {:?}", s),
     }
 }
@@ -745,10 +744,6 @@ pub fn lower_string_lit(ctx: &mut Context, s: impl AsRef<str>) -> diag::Result<c
         expr = Expr::apply_n(cons.clone(), vec![Expr::Lit(c), expr]);
     }
     Ok(expr)
-}
-
-fn primitive(t: &str) -> core::Ty {
-    core::Ty::Sym(ustr(t))
 }
 
 fn expect_var(ctx: &Context, name: &str) -> diag::Result<VarId> {

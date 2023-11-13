@@ -3,8 +3,8 @@ use crate::Context;
 
 use term_print::ansi::{
     chars::{
-        ARROW, COLON, COMMA, COMMA_SEP, EQUALS, LAMBDA, LBRAC, LBRACE, LPARN, PERIOD, PIPE_SEP,
-        PLUS_SEP, QMARK, QUOTE, RBRAC, RBRACE, RPARN, TILDE,
+        ARROW, COLON, COMMA, COMMA_SEP, EQARROW, EQUALS, LAMBDA, LBRAC, LBRACE, LPARN, PERIOD,
+        PIPE_SEP, PLUS_SEP, QMARK, QUOTE, RBRAC, RBRACE, RPARN, TILDE,
     },
     ATTR, BLUE, BOLD, CYAN, DELIM, GREEN, ITALIC, KEYWORD, MAGENTA, PUNCT, RED, RESET, TAG, TITLE,
     UNDERLINE,
@@ -27,12 +27,23 @@ impl PrettyPrint<Context> for TyE {
         level: usize,
     ) -> io::Result<()> {
         let params = RefCell::new(BTreeMap::new());
-        if self.ef.is_pure() {
-            self.ty.pretty_print(out, ctx, params.clone())?;
+
+        let s = if self.ef.is_pure() {
+            self.ty.pretty_string_info(ctx, params.clone())
         } else {
-            self.ty.pretty_print(out, ctx, params.clone())?;
-            write!(out, " {TILDE} ");
-            self.ef.pretty_print(out, ctx, params.clone())?;
+            format!(
+                "{} {TILDE} {}",
+                self.ty.pretty_string_info(ctx, params.clone()),
+                self.ef.pretty_string_info(ctx, params.clone())
+            )
+        };
+
+        if !self.cs.is_empty() {
+            write!(out, "{LPARN}")?;
+            write_list(out, ctx, ", ", &self.cs)?;
+            write!(out, " {EQARROW} {}{RPARN}", s)?;
+        } else {
+            write!(out, "{}", s)?;
         }
         Ok(())
     }
@@ -334,10 +345,9 @@ impl PrettyPrint<Context> for Lit {
         match self {
             Lit::Unit => write!(out, "{LPARN}{RPARN}"),
             Lit::Bool(b) => write!(out, "{MAGENTA}{}{RESET}", b),
-            Lit::Int(i) => write!(out, "{CYAN}{}{RESET}", i),
-            Lit::Float(f) => write!(out, "{CYAN}{}{RESET}", f64::from_bits(*f)),
             Lit::Char(c) => write!(out, "{GREEN}{}{RESET}", c.escape_default()),
-            Lit::Symbol(s) => write!(out, "{BLUE}'{}{RESET}", s),
+            Lit::Int(i) => write!(out, "{CYAN}{}{RESET}", i),
+            Lit::Double(f) => write!(out, "{CYAN}{}{RESET}", f64::from_bits(*f)),
         }
     }
 }

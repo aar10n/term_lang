@@ -38,6 +38,7 @@ pub mod chars {
     pub const QUOTE: &str = concatcp!(PUNCT, "'", RESET);
     pub const QMARK: &str = concatcp!(PUNCT, "?", RESET);
     pub const ARROW: &str = concatcp!(PUNCT, "->", RESET);
+    pub const EQARROW: &str = concatcp!(PUNCT, "=>", RESET);
     pub const TILDE: &str = concatcp!(PUNCT, "~", RESET);
 
     pub const COMMA_SEP: &str = concatcp!(COMMA, " ");

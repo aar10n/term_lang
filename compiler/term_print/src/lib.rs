@@ -98,6 +98,11 @@ pub trait PrettyString<Ctx, Info: Clone>: PrettyPrint<Ctx, Info> {
     fn pretty_string(&self, ctx: &Ctx) -> String;
     fn plain_string(&self, ctx: &Ctx) -> String;
     fn print_stdout(&self, ctx: &Ctx) -> io::Result<()>;
+    fn pretty_string_info(&self, ctx: &Ctx, info: Info) -> String {
+        let mut buf = Vec::new();
+        self.pretty_print(&mut buf, ctx, info).unwrap();
+        String::from_utf8(buf).unwrap()
+    }
 }
 
 impl<T: PrettyPrint<Ctx, Info>, Ctx, Info: Default + Clone> PrettyString<Ctx, Info> for T {

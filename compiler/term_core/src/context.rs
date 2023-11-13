@@ -199,6 +199,14 @@ impl Context {
             .unwrap_or_else(|| panic!("builtin type `{}` not found", name))
             .data_id()
     }
+
+    pub fn get_primitive_ty(&self, name: impl AsRef<str>) -> TyE {
+        let name = name.as_ref();
+        if let Some(Id::Data(id)) = self.global_types.get(&Ustr::from(name)) {
+            return TyE::pure(Ty::Data(*id, vec![]));
+        }
+        TyE::pure(Ty::Data(self.get_builtin_type(name), vec![]))
+    }
 }
 
 pub enum Exclusivity {

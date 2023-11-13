@@ -75,15 +75,13 @@ fn infer_def_ty<'a>(core: &'a mut core::Context, id: VarId) -> diag::Result<TyE>
         }
     }
 
-    println!("  inferring type of {}", id.pretty_string(core));
-    let body = {
+    let (body, trace) = {
         let def = def.borrow();
-        def.body.clone()
+        (def.body.clone(), !def.builtin)
     };
-
-    // println!("  {}", body.pretty_string(core));
-    let (body, ty) = solve::infer(core, body, true)?;
-    println!("  {}", ty.pretty_string(core));
+    println!("inferring type of {}", id.pretty_string(core),);
+    let (body, ty) = solve::infer(core, body, trace)?;
+    println!("=> {}", ty.pretty_string(core));
 
     let mut def = def.borrow_mut();
     def.body = body;

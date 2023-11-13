@@ -1,13 +1,68 @@
 use crate::{ef, hm, trace_println, ty, Context};
+use term_common as common;
 use term_core as core;
 use term_diag as diag;
 use term_print as print;
 
 use core::{Constraint, Ef, MonoVarId, PolyVarId, Ty, TyE};
-use diag::IntoDiagnostic;
+use diag::{IntoDiagnostic, IntoError};
 use print::{PrettyPrint, PrettyString};
 
 use std::collections::HashMap;
+use ustr::Ustr;
+
+pub fn class_constraint(
+    ctx: &mut Context,
+    name: impl AsRef<str>,
+    ts: impl IntoIterator<Item = TyE>,
+) -> diag::Result<(Vec<Ty>, Vec<Constraint>)> {
+    let name = name.as_ref();
+    let class_id = ctx
+        .core
+        .global_types
+        .get(&Ustr::from(name))
+        .copied()
+        .ok_or(format!("class `{}` not found", name).into_diagnostic())?
+        .class_id();
+
+    let class = ctx.core.classes[&class_id].clone();
+    let class = class.borrow();
+
+    let mut ts = ts.into_iter().collect::<Vec<_>>();
+    if ts.len() > class.ps.len() {
+        return format!(
+            "class `{}` expects {} arguments, but got {}",
+            name,
+            class.ps.len(),
+            ts.len()
+        )
+        .into_err();
+    }
+
+    // instantiate the class and associated constraints
+    //   - first create a mapping from the class parameters to fresh monotypes
+    let mut ps = HashMap::new();
+    for p in class.ps.iter() {
+        let mono = ctx.core.ids.next_mono_var_id();
+        ps.insert(p.clone(), mono);
+    }
+    //   - then instantiate the constraints
+    let mut cs = cs::instantiate(ctx, class.cs.clone(), &mut ps);
+    //   - then substitute parameters with the given types
+    for (mono, t) in class.ps.iter().map(|p| ps[p]).clone().zip(ts.iter()) {
+        cs = cs::subst_ty(&Ty::Mono(mono), t, cs);
+    }
+    //   - finally collect the unspecialized parameters
+    let mut out_ps = vec![];
+    for v in class.ps.iter().skip(ts.len()).map(|p| ps[p]) {
+        out_ps.push(Ty::Mono(v));
+        ts.push(TyE::pure(Ty::Mono(v)));
+    }
+
+    // finally add the class constraint
+    cs.push(Constraint::Class(class_id, ts));
+    Ok((out_ps, cs))
+}
 
 pub fn update(ctx: &mut Context, c: Constraint) -> Constraint {
     use Constraint::*;

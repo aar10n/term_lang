@@ -906,7 +906,7 @@ impl PrettyPrint<Context> for LitKind {
         match self {
             LitKind::Unit => writeln!(out, "{CYAN}(){RESET}"),
             LitKind::Int(n) => write!(out, "{CYAN}{}{RESET}", n),
-            LitKind::Float(n) => write!(out, "{CYAN}{}{RESET}", n),
+            LitKind::Double(n) => write!(out, "{CYAN}{}{RESET}", n),
             LitKind::Bool(b) => write!(out, "{MAGENTA}{}{RESET}", b),
             LitKind::Char(c) => write!(out, "{GREEN}'{}'{RESET}", c.escape_debug()),
             LitKind::String(s) => write!(out, "{GREEN}\"{}\"{RESET}", s.escape_debug()),

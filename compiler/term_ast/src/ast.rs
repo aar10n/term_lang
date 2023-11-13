@@ -784,7 +784,7 @@ pub enum LitKind {
     Unit,
     Bool(bool),
     Int(u64),
-    Float(f64),
+    Double(f64),
     Char(char),
     String(String),
 }
